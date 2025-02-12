@@ -1,0 +1,6 @@
+[package]
+name = "pkg-d"
+publish = false
+
+[dependencies]
+pkg-c = "*"

@@ -1,0 +1,9 @@
+[package]
+name = "pkg-c"
+publish = false
+
+[dependencies]
+pkg-a-rename = { package = "pkg-a", version = "*" }
+
+[target.foobar.build-dependencies]
+pkg-b = "*"

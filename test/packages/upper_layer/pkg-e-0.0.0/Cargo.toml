@@ -1,0 +1,9 @@
+[package]
+name = "pkg-e"
+publish = false
+
+[dependencies]
+pkg-d = { version = "*", path = "../pkg-d-0.0.0"}
+
+[dev-dependencies]
+pkg-a = "*"

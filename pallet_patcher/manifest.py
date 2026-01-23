@@ -76,6 +76,11 @@ def get_dependencies(manifest_data, location):
     """
     package_name = manifest_data.get('name')
     all_dependencies = _extract_dependencies(manifest_data, package_name)
+    # print(f"{package_name} depends on {all_dependencies}")
+
+    # This section is meant to parse dependencies related to platform-specific configuration
+    # See: https://rustwiki.org/en/cargo/reference/config.html#target
+    # TO-DO: only fetch dependencies here if your specific platform requires it
     for category, spec in manifest_data.get('target', {}).items():
         dependencies = _extract_dependencies(spec, package_name)
         for existing, new in zip(all_dependencies, dependencies):

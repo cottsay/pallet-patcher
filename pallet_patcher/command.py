@@ -29,7 +29,7 @@ def load_and_compose(manifest_path, search_paths):
     plain, build, dev = get_dependencies(manifest, location)
     dependencies = [*plain.items(), *build.items(), *dev.items()]
 
-    return compose(dependencies, search_paths)
+    return compose(dependencies)
 
 
 def main(argv=None):

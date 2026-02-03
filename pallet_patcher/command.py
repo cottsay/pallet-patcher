@@ -11,13 +11,15 @@ from pallet_patcher.search import get_cargo_arguments
 from pallet_patcher.search import get_cargo_config
 
 
-def load_and_compose(manifest_path, search_paths):
+def load_and_compose(manifest_path, ws_search_paths, system_search_paths):
     """
     Load a Cargo manifest and compose a package collection for building it.
 
     :param manifest_path: Path to the Cargo.toml file on disk
     :type manifest_path: Path
-    :param search_paths: List of local registry sources to search for packages
+    :param ws_search_paths: List of local registry sources to search for patcheable packages
+    :type search_paths: list
+    :param ws_search_paths: List of system registry sources to search for immutable packages
     :type search_paths: list
 
     :returns: Collection of packages which may satisfy the requirements to
@@ -29,7 +31,7 @@ def load_and_compose(manifest_path, search_paths):
     plain, build, dev = get_dependencies(manifest, location)
     dependencies = [*plain.items(), *build.items(), *dev.items()]
 
-    return compose(dependencies)
+    return compose(dependencies, ws_search_paths, system_search_paths)
 
 
 def main(argv=None):
@@ -41,13 +43,28 @@ def main(argv=None):
     """
     parser = ArgumentParser()
     parser.add_argument('manifest_path', type=Path)
-    parser.add_argument('search_path', type=Path, nargs='+')
+    parser.add_argument(
+        'path_ws_deps',
+        type=Path,
+        nargs='*',
+        default=[Path.cwd() / "deps"],
+        help="List of paths to search for workspace crates. Defaults to ./deps/ if none provided."
+    )
+    parser.add_argument(
+        'path_system_crates',
+        type=Path,
+        nargs='*',
+        default=[Path("/usr/share/cargo/registry/")],
+        help="List of paths to search for system crates. Defaults to '/usr/share/cargo/registry/' if none provided."
+    )
+
     parser.add_argument(
         '--output-format', choices=('args', 'toml'), default='args')
     args = parser.parse_args(argv)
 
-    search_paths = [path.resolve() for path in args.search_path]
-    composition = load_and_compose(args.manifest_path, search_paths)
+    workspace_search_paths = [path.resolve() for path in args.path_ws_deps]
+    system_search_paths = [path.resolve() for path in args.path_system_crates]
+    composition = load_and_compose(args.manifest_path, workspace_search_paths, system_search_paths)
 
     if args.output_format == 'toml':
         print(get_cargo_config(composition))

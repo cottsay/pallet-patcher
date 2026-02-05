@@ -77,13 +77,10 @@ def _get_available_crates(search_paths):
     """
     versions = defaultdict(set) # Skip duplicates in versions dict
     pkgs_metadata = {}
-    # search_path = search_paths.pop(0)
-    # print(search_paths)
 
     # Iterate over all the paths provided
     for search_path in search_paths:
         for manifest_path in search_path.glob('*/Cargo.toml'):
-            # print("HERE")
             manifest = load_manifest(manifest_path)
             pkgname = manifest.get('package', {}).get('name')
             version = manifest.get('package', {}).get('version')
@@ -94,13 +91,6 @@ def _get_available_crates(search_paths):
             # Should we throw a warning?
             pkgs_metadata[f"{pkgname}+{version}"] = (manifest_path.parent, manifest)
 
-            # Testing, erase this before merging
-            # for pkgname, versions_pkg in versions.items():
-            #     if(len(versions_pkg) >= 2):
-            #         print(pkgname, versions_pkg)
-            #         for version in versions_pkg:
-            #             print(pkgs_metadata[f"{pkgname}+{version}"])
-            # print(versions, pkgs_metadata)
     return versions, pkgs_metadata
 
 
@@ -143,19 +133,8 @@ def compose(dependencies, ws_crates_path, system_crates_path):
         else:
             version_spec = specifications
 
-        # Not sure if this still needed, since we specify a dependency that matches
-        # the specifier set in the requirements
-        # if name+"+"+version_spec in composition:
-        #     reference = _get_reference(specifications)
-        #     # No need to add this if the reference is not different from the one already added
-        #     # This is a no-op now, but should we track here different versions?
-        #     if reference is not None:
-        #         composition[name][0].add(reference)
-        #     continue
-
         # If we already parsed a version_spec, do not repeat that
         # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, libc==0.2.50, etc
-        # Not sure what we want to do in that scenario
         if name+str(version_spec) in solved_specifiers:
             continue
 
@@ -171,7 +150,7 @@ def compose(dependencies, ws_crates_path, system_crates_path):
             candidate = platform_crates_metadata[f"{name}+{solved_version}"]
             local_crate = False
         else:
-            # Do nothing, let cargo handle this scenario
+            # Do nothing, cargo will handle this scenario
             pass
 
         # Do not search again for versions specifiers that we already looked up
@@ -194,11 +173,13 @@ def compose(dependencies, ws_crates_path, system_crates_path):
         reference = _get_reference(specifications)
         # Add the dependencies of the pkg to the list of packages that we need to find afterwards
         location, manifest = candidate
-        plain_deps, build_deps, _ = get_dependencies(manifest, location)
+        plain_deps, build_deps, _ = get_dependencies(name, manifest, location)
         queue.extend(plain_deps.items())
         queue.extend(build_deps.items())
 
-        composition[name+"+"+solved_version] = (reference, location, local_crate)
+        # We also add the raw pkgname to the composition, because patches don't support
+        # Adding pkgname+version as part of the patch name
+        composition[name+"~"+solved_version] = (reference, location, local_crate, name)
 
     return composition
 
@@ -220,7 +201,7 @@ def get_cargo_arguments(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     arguments = set()
-    for name, (reference, candidate, crate_local) in composition.items():
+    for versioned_name, (reference, candidate, crate_local, pkgname) in composition.items():
         # I'm not sure how this will work with user custom references here
         if not reference:
             reference = default_registry
@@ -231,16 +212,19 @@ def get_cargo_arguments(composition, default_registry=None):
             # at least one of our candidates.
             continue
 
-        # If the package is local, treat it as a patch
-        # For patches we have to add:
-        if crate_local:
-            # Specifically use ~, which is valid in TOML but not in a
-            # Cargo package name to reduce the likelihood of a collision
-            section = f"patch.'{reference}'.'{name}~{1}'"
-            arguments.add(f"--config={section}.package='{name}'")
-            arguments.add(f"--config={section}.path='{candidate}'")
-        else:
-            pass
+        section = f"patch.'{reference}'.'{versioned_name}'"
+        arguments.add(f"--config={section}.package='{pkgname}'")
+        arguments.add(f"--config={section}.path='{candidate}'")
+
+        # I added the crate_local variable so we can treat
+        # dependencies in the system folder differently than dependencies
+        # in our local path. HOWEVER, it seems we can not treat those
+        # differently, unless we modify the original Cargo.toml, specifying
+        # That we get those from a different registry
+        # if crate_local:
+        #    pass
+        # else:
+        #     pass
 
     return sorted(arguments)
 
@@ -262,7 +246,7 @@ def get_cargo_config(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     sections = set()
-    for name, (reference, candidate, crate_local) in composition.items():
+    for versioned_name, (reference, candidate, crate_local, pkgname) in composition.items():
         if reference is None:
             reference = default_registry
         elif candidate.as_uri() == reference:
@@ -272,27 +256,10 @@ def get_cargo_config(composition, default_registry=None):
             # at least one of our candidates.
             continue
 
-        # Specifically use ~, which is valid in TOML but not in a
-        # Cargo package name to reduce the likelihood of a collision
-        # sections.add('\n'.join((
-        #     f"[patch.'{reference}'.'{name}~{1}']",
-        #     f"package = '{name}'",
-        #     f"path = '{candidate}'",
-        # )))
-
-        # If the package is local, treat it as a patch
-        # For patches we have to add:
-        if crate_local:
-            # If the package is system level, treat it as immutable
-            # Specifically use ~, which is valid in TOML but not in a
-            # Cargo package name to reduce the likelihood of a collision
-            sections.add('\n'.join((
-                f"[patch.'{reference}'.'{name}~{1}']",
-                f"package = '{name}'",
-                f"path = '{candidate}'",
-            )))
-        else:
-            # Otherwise, attempt to solve it with paths override
-            pass
+        sections.add('\n'.join((
+            f"[patch.'{reference}'.'{versioned_name}']",
+            f"package = '{pkgname}'",
+            f"path = '{candidate}'",
+        )))
 
     return '\n\n'.join(sorted(sections))

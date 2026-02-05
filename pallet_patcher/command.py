@@ -28,7 +28,7 @@ def load_and_compose(manifest_path, ws_search_paths, system_search_paths):
     """
     manifest = load_manifest(manifest_path)
     location = manifest_path.parent.resolve()
-    plain, build, dev = get_dependencies(manifest, location)
+    plain, build, dev = get_dependencies(None, manifest, location)
     dependencies = [*plain.items(), *build.items(), *dev.items()]
 
     return compose(dependencies, ws_search_paths, system_search_paths)

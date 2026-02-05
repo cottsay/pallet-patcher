@@ -27,10 +27,29 @@ def load_manifest(manifest_path):
         return toml_loads(f.read().decode())
 
 
-def _extract_dependencies(manifest_section, package_name):
+def _get_optional_dependency(version_specifier):
+    if isinstance(version_specifier, dict):
+        return version_specifier.get('optional', False)
+    else:
+        return False
+
+
+def _extract_dependencies(manifest_section, package_name, skip_optional_deps = True):
+    # TO-DO: Do we want to skip optional dependencies from the list of dependencies?
+    # I think we should, but added a boolean to make sure we can configure that behavior
+    # later
+    # UGH: https://github.com/rust-lang/cargo/issues/4544
+    # (Cargo fails to run when an *optional* dependency is missing)
+    # There's no way of telling cargo to ignore those.
+
+    # Good news: disabling optional dependencies make the lot of warnings related to patching
+    # disappear. Since we are only patching whatever it is we have as a required dependency.
     plain_dependencies = {}
+
     for k, v in manifest_section.get('dependencies', {}).items():
         if k == package_name:
+            continue
+        if skip_optional_deps and _get_optional_dependency(v):
             continue
         plain_dependencies[k] = v
 
@@ -38,11 +57,15 @@ def _extract_dependencies(manifest_section, package_name):
     for k, v in manifest_section.get('build-dependencies', {}).items():
         if k == package_name:
             continue
+        if skip_optional_deps and _get_optional_dependency(v):
+            continue
         build_dependencies[k] = v
 
     dev_dependencies = {}
     for k, v in manifest_section.get('dev-dependencies', {}).items():
         if k == package_name:
+            continue
+        if skip_optional_deps and _get_optional_dependency(v):
             continue
         dev_dependencies[k] = v
 
@@ -61,7 +84,7 @@ def _resolve_dependencies(dependencies, location):
                 str((location / specifications_path).absolute()))
 
 
-def get_dependencies(manifest_data, location):
+def get_dependencies(package_name, manifest_data, location):
     """
     Get the dependencies from a Cargo.toml manifest.
 
@@ -74,9 +97,7 @@ def get_dependencies(manifest_data, location):
     :returns: Tuple of dependencies: plain, build, dev
     :rtype: tuple
     """
-    package_name = manifest_data.get('name')
     all_dependencies = _extract_dependencies(manifest_data, package_name)
-    # print(f"{package_name} depends on {all_dependencies}")
 
     # This section is meant to parse dependencies related to platform-specific configuration
     # See: https://rustwiki.org/en/cargo/reference/config.html#target

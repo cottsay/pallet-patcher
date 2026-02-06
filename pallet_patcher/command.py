@@ -29,10 +29,9 @@ def load_and_compose(manifest_path, ws_search_paths, system_search_paths):
     manifest = load_manifest(manifest_path)
     location = manifest_path.parent.resolve()
     plain, build, dev = get_dependencies(None, manifest, location)
-    root_pkg = manifest.get('package').get('name')
     dependencies = [*plain.items(), *build.items(), *dev.items()]
 
-    return compose(root_pkg, dependencies, ws_search_paths, system_search_paths)
+    return compose(dependencies, ws_search_paths, system_search_paths)
 
 
 def main(argv=None):

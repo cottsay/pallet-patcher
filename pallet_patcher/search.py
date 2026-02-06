@@ -138,10 +138,6 @@ def compose(root_pkg_name, dependencies, ws_crates_paths, system_crates_paths, o
         if name+str(version_spec) in solved_specifiers:
             continue
 
-        ### Pkgs shouldn't add themselves
-        if name == root_pkg_name:
-            continue
-
         candidate = None
         # Priority mechanism, attempt to get first a candidate that solves the expected dependency
         # specification from the local workspace. If not available, try to solve with machine

@@ -96,7 +96,7 @@ def _get_available_crates(search_paths):
 
 # Untested: what if we provide multiple crates_path for a single category?
 # How do we prioritize between these?
-def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = False):
+def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = True):
     """
     Compose a collection of crates which may satisfy given dependencies.
 

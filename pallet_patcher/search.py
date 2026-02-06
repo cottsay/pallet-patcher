@@ -96,7 +96,7 @@ def _get_available_crates(search_paths):
 
 # Untested: what if we provide multiple crates_path for a single category?
 # How do we prioritize between these?
-def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = True):
+def compose(root_pkg_name, dependencies, ws_crates_paths, system_crates_paths, online_build = True):
     """
     Compose a collection of crates which may satisfy given dependencies.
 
@@ -136,6 +136,10 @@ def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = T
         # If we already parsed a version_spec, do not repeat that
         # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, libc==0.2.50, etc
         if name+str(version_spec) in solved_specifiers:
+            continue
+
+        ### Pkgs shouldn't add themselves
+        if name == root_pkg_name:
             continue
 
         candidate = None

@@ -96,7 +96,7 @@ def _get_available_crates(search_paths):
 
 # Untested: what if we provide multiple crates_path for a single category?
 # How do we prioritize between these?
-def compose(dependencies, ws_crates_path, system_crates_path):
+def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = True):
     """
     Compose a collection of crates which may satisfy given dependencies.
 
@@ -114,8 +114,8 @@ def compose(dependencies, ws_crates_path, system_crates_path):
       dependencies.
     :rtype: dict
     """
-    ws_crates, workspace_crates_metadata = _get_available_crates(ws_crates_path)
-    platform_crates, platform_crates_metadata = _get_available_crates(system_crates_path)
+    ws_crates, workspace_crates_metadata = _get_available_crates(ws_crates_paths)
+    platform_crates, platform_crates_metadata = _get_available_crates(system_crates_paths)
     composition = {}
     solved_specifiers = {}
 
@@ -157,8 +157,13 @@ def compose(dependencies, ws_crates_path, system_crates_path):
         solved_specifiers[name+str(version_spec)] = True
 
         if candidate is None:
+            # Online build we rely in crates.io completely to download anything missing
+            if online_build:
+                continue
+
             # This would only be an actual error if the user set "use_internet = False"
             # Otherwise cargo should just pull from crates.io
+            # Default case: this won't throw and error, it will pull whatever it's missing from crates.io
             print(f"ERROR: {name} does not have any candidates available to meet requirements {specifications}")
             if not ws_crates[name] and not platform_crates[name]:
                 print("Not any local packages available")

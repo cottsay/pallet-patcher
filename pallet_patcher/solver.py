@@ -1,10 +1,14 @@
+# Copyright 2025 Open Source Robotics Foundation, Inc.
+# Licensed under the Apache License, Version 2.0
+
 from packaging.version import Version
 from packaging.specifiers import SpecifierSet
 
+
 # I heavily relied on AI to help with this one.
-# I added each case by iterating on the ones that throw me errors while debugging
-# We can add tests to make sure it handles most common Rust cases
-# (or at least the ones used right now
+# I added each case by iterating on the ones that throw me errors while
+# debugging. We can add tests to make sure it handles most common Rust
+# cases (or at least the ones used right now
 def _parse_rust_specifier(spec_str: str) -> SpecifierSet:
     clean_spec = spec_str.strip()
 
@@ -46,7 +50,7 @@ def _parse_rust_specifier(spec_str: str) -> SpecifierSet:
             if major == 0:
                 # Case B.1: Single digit (^0) -> Allow 0.x.x
                 if len(parts) == 1:
-                     return SpecifierSet(f">={clean_spec},<1.0.0")
+                    return SpecifierSet(f">={clean_spec},<1.0.0")
 
                 minor = int(parts[1])
 
@@ -65,7 +69,7 @@ def _parse_rust_specifier(spec_str: str) -> SpecifierSet:
                     return SpecifierSet(f">={clean_spec},<0.1.0")
 
         except ValueError:
-            pass # Fallback to standard handling if parsing fails
+            pass  # Fallback to standard handling if parsing fails
 
     # Fallback for standard Python specifiers (>=1.2, etc.)
     return SpecifierSet(clean_spec)
@@ -82,15 +86,15 @@ def solve_dependency(version_specifier, available_versions):
     :param available_versions: List of versions available.
     :type available_versions: str
 
-    :returns: matched version string, or None if available versions don't match the spec
+    :returns: matched version string, or None if available ver don't match
     :rtype: dict
     """
     spec = _parse_rust_specifier(version_specifier)
 
     # We sort them first to prioritize higher versions for the packages
     sorted_versions = sorted(
-        available_versions, 
-        key=lambda x: [int(part) for part in x.split('.')], 
+        available_versions,
+        key=lambda x: [int(part) for part in x.split('.')],
         reverse=True
     )
 

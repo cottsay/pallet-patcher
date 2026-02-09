@@ -60,13 +60,12 @@ def _get_reference(specification):
     return specification.get('registry')
 
 
-# def compose(dependencies, search_paths): #uncomment this and search_paths.pop(0) to
-def _get_available_crates(search_paths):
+def _get_available_crates(search_path):
     """
     Create a list of crates available from a directory
 
-    :param search_paths: List of local registry sources to search for packages
-    :type search_paths: List[Path]
+    :param search_path: Local registry source to search for packages
+    :type search_path: Path
 
     :returns: Collection of packages available within a directory and their versions
     :rtype: dict
@@ -79,24 +78,21 @@ def _get_available_crates(search_paths):
     pkgs_metadata = {}
 
     # Iterate over all the paths provided
-    for search_path in search_paths:
-        for manifest_path in search_path.glob('*/Cargo.toml'):
-            manifest = load_manifest(manifest_path)
-            pkgname = manifest.get('package', {}).get('name')
-            version = manifest.get('package', {}).get('version')
+    for manifest_path in search_path.glob('*/Cargo.toml'):
+        manifest = load_manifest(manifest_path)
+        pkgname = manifest.get('package', {}).get('name')
+        version = manifest.get('package', {}).get('version')
 
-            versions[pkgname].add(version)
+        versions[pkgname].add(version)
 
-            # We are assuming here there won't be duplicated crates+version within the same search_path
-            # Should we throw a warning?
-            pkgs_metadata[f"{pkgname}+{version}"] = (manifest_path.parent, manifest)
+        # We are assuming here there won't be duplicated crates+version within the same search_path
+        # Should we throw a warning?
+        pkgs_metadata[f"{pkgname}+{version}"] = (manifest_path.parent, manifest)
 
     return versions, pkgs_metadata
 
 
-# Untested: what if we provide multiple crates_path for a single category?
-# How do we prioritize between these?
-def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = True):
+def compose(dependencies, search_paths, online_build = True):
     """
     Compose a collection of crates which may satisfy given dependencies.
 
@@ -104,18 +100,21 @@ def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = T
       (import name, specifications)
     :type dependencies: tuple
 
-    :param ws_crates_path: Directory where the crate dependencies local to our project are stored
-    :type ws_crates_path: path
+    :param search_paths: List of local registry sources to search for packages
+    :type search_paths: list
 
-    :param system_crates_path: Directory where our platform saves IMMUTABLE crates
-    :type system_crates_path: path
+    :param online_build: Decide if we throw error when we need a dep from cargo
+    :type online_build: bool (defaults True)
 
     :returns: Collection of packages which may satisfy the required
       dependencies.
     :rtype: dict
     """
-    ws_crates, workspace_crates_metadata = _get_available_crates(ws_crates_paths)
-    platform_crates, platform_crates_metadata = _get_available_crates(system_crates_paths)
+    dependency_paths_registered = []
+    for user_path in search_paths:
+        crates_and_metadata = _get_available_crates(user_path)
+        dependency_paths_registered.append(crates_and_metadata)
+
     composition = {}
     solved_specifiers = {}
 
@@ -139,19 +138,11 @@ def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = T
             continue
 
         candidate = None
-        # Priority mechanism, attempt to get first a candidate that solves the expected dependency
-        # specification from the local workspace. If not available, try to solve with machine
-        # installed packages. Otherwise, just default to crates.io
-        # TO-DO: if we do nothing about the latter ones, cargo will default to crates.io
-        if ws_crates[name] and (solved_version := solve_dependency(version_spec, ws_crates[name])):
-            candidate = workspace_crates_metadata[f"{name}+{solved_version}"]
-            local_crate = True
-        elif platform_crates[name] and (solved_version := solve_dependency(version_spec, platform_crates[name])):
-            candidate = platform_crates_metadata[f"{name}+{solved_version}"]
-            local_crate = False
-        else:
-            # Do nothing, cargo will handle this scenario
-            pass
+        # Priority mechanism, check the dependency paths in the order provided by the user of pallet-patcher
+        for crates, metadada in dependency_paths_registered:
+            if crates[name] and (solved_version := solve_dependency(version_spec, crates[name])):
+                candidate = metadada[f"{name}+{solved_version}"]
+                break
 
         # Do not search again for versions specifiers that we already looked up
         solved_specifiers[name+str(version_spec)] = True
@@ -165,15 +156,9 @@ def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = T
             # Otherwise cargo should just pull from crates.io
             # Default case: this won't throw and error, it will pull whatever it's missing from crates.io
             print(f"ERROR: {name} does not have any candidates available to meet requirements {specifications}")
-            if not ws_crates[name] and not platform_crates[name]:
-                print("Not any local packages available")
-            elif not ws_crates[name]:
-                print(f"Available system: {platform_crates[name]}")
-            elif not platform_crates[name]:
-                print(f"Available local: {ws_crates[name]}")
-            else:
-                print(f"Available local: {ws_crates[name]}", f"Available system: {platform_crates[name]}")
-            continue
+            for crates, _ in dependency_paths_registered:
+                print(f"Available in path provided: {crates[name]}")
+            return {}
 
         reference = _get_reference(specifications)
         # Add the dependencies of the pkg to the list of packages that we need to find afterwards
@@ -184,7 +169,7 @@ def compose(dependencies, ws_crates_paths, system_crates_paths, online_build = T
 
         # We also add the raw pkgname to the composition, because patches don't support
         # Adding pkgname+version as part of the patch name
-        composition[name+"~"+solved_version] = (reference, location, local_crate, name)
+        composition[name+"~"+solved_version] = (reference, location, name)
 
     return composition
 
@@ -206,7 +191,7 @@ def get_cargo_arguments(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     arguments = set()
-    for versioned_name, (reference, candidate, crate_local, pkgname) in composition.items():
+    for versioned_name, (reference, candidate, pkgname) in composition.items():
         # I'm not sure how this will work with user custom references here
         if not reference:
             reference = default_registry
@@ -220,16 +205,6 @@ def get_cargo_arguments(composition, default_registry=None):
         section = f"patch.'{reference}'.'{versioned_name}'"
         arguments.add(f"--config={section}.package='{pkgname}'")
         arguments.add(f"--config={section}.path='{candidate}'")
-
-        # I added the crate_local variable so we can treat
-        # dependencies in the system folder differently than dependencies
-        # in our local path. HOWEVER, it seems we can not treat those
-        # differently, unless we modify the original Cargo.toml, specifying
-        # That we get those from a different registry
-        # if crate_local:
-        #    pass
-        # else:
-        #     pass
 
     return sorted(arguments)
 
@@ -251,7 +226,7 @@ def get_cargo_config(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     sections = set()
-    for versioned_name, (reference, candidate, crate_local, pkgname) in composition.items():
+    for versioned_name, (reference, candidate, pkgname) in composition.items():
         if reference is None:
             reference = default_registry
         elif candidate.as_uri() == reference:

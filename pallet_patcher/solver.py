@@ -5,11 +5,7 @@ from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 
-# I heavily relied on AI to help with this one.
-# I added each case by iterating on the ones that throw me errors while
-# debugging. We can add tests to make sure it handles most common Rust
-# cases (or at least the ones used right now
-def _parse_rust_specifier(spec_str: str) -> SpecifierSet:
+def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     clean_spec = spec_str.strip()
 
     # 1. Handle "Explicit Equals" (=1.2.3 -> ==1.2.3)
@@ -88,7 +84,7 @@ def solve_dependency(version_specifier, available_versions):
     :returns: matched version string, or None if available ver don't match
     :rtype: dict
     """
-    spec = _parse_rust_specifier(version_specifier)
+    spec = _parse_cargo_specifier(version_specifier)
 
     # We sort them first to prioritize higher versions for the packages
     sorted_versions = sorted(

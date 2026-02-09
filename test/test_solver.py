@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 
 from packaging.specifiers import InvalidSpecifier
-from pallet_patcher.solver import _parse_rust_specifier, solve_dependency
+from pallet_patcher.solver import _parse_cargo_specifier, solve_dependency
 import pytest
 
 
@@ -49,7 +49,7 @@ def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
 
     It should also exclude the versions dictated by Rust SemVer logic.
     """
-    spec_set = _parse_rust_specifier(r_input)
+    spec_set = _parse_cargo_specifier(r_input)
 
     for version in expected_matches:
         assert version in spec_set, \
@@ -70,7 +70,7 @@ def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
 ])
 def test_standard_python_fallback(input_str, expected_str_repr):
     """Tests that std Python specifiers or other strings are passed through."""
-    spec = _parse_rust_specifier(input_str)
+    spec = _parse_cargo_specifier(input_str)
     # Note: SpecifierSet normalization might change string spacing,
     # but the logic checks if it parses without crashing.
     assert str(spec) == expected_str_repr or not input_str
@@ -84,7 +84,7 @@ def test_invalid_version_strings():
     # Here we just want to ensure your code doesn't crash internally.
     # This acts as both the try/except and the assertion
     with pytest.raises((ValueError, InvalidSpecifier)):
-        _parse_rust_specifier('invalid_string_with_char')
+        _parse_cargo_specifier('invalid_string_with_char')
 
 
 @pytest.mark.parametrize('spec, available, expected', [

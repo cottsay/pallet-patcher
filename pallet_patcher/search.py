@@ -11,7 +11,7 @@ from pallet_patcher.manifest import load_manifest
 
 def _get_available_crates(search_path):
     """
-    Create a list of crates available from a directory
+    Create a list of crates available from a directory.
 
     :param search_path: Local registry source to search for packages
     :type search_path: Path

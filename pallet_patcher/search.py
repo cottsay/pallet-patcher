@@ -30,7 +30,7 @@ def _get_available_crates(search_path):
     for manifest_path in search_path.glob('*/Cargo.toml'):
         manifest = load_manifest(manifest_path)
         pkgname = manifest.get('package', {}).get('name')
-        version = manifest.get('package', {}).get('version')
+        version = manifest.get('package', {}).get('version') or '0.0.0'
 
         versions[pkgname].add(version)
 

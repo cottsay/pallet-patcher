@@ -1,11 +1,48 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
+from collections import defaultdict
 import os
 from pathlib import Path
 
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
+
+
+def _get_available_crates(search_path):
+    """
+    Create a list of crates available from a directory.
+
+    :param search_path: Local registry source to search for packages
+    :type search_path: Path
+
+    :returns: Collection of pkgs available in a directory and their versions
+    :rtype: dict
+
+    :returns: Collection of the directory and metadata information for a
+              specific pkgname+version
+    :rtype: dict
+    """
+    versions = defaultdict(set)  # Skip duplicates in versions dict
+    pkgs_metadata = {}
+
+    # Iterate over all the paths provided
+    for manifest_path in search_path.glob('*/Cargo.toml'):
+        manifest = load_manifest(manifest_path)
+        pkgname = manifest.get('package', {}).get('name')
+        # TO-DO: In some cases, we want to crash if we can't find the package
+        if not pkgname:
+            continue
+        version = manifest.get('package', {}).get('version') or '0.0.0'
+
+        versions[pkgname].add(version)
+
+        # We are assuming here there won't be duplicated crates+version within
+        # the same search_path.
+        pkgs_metadata[f'{pkgname}+{version}'] = (
+            manifest_path.parent, manifest)
+
+    return versions, pkgs_metadata
 
 
 def _get_reference(specification):

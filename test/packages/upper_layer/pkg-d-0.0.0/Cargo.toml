@@ -1,5 +1,6 @@
 [package]
 name = "pkg-d"
+version = "0.0.0"
 publish = false
 
 [dependencies]

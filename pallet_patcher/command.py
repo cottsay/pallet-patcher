@@ -26,7 +26,12 @@ def load_and_compose(manifest_path, search_paths):
     """
     manifest = load_manifest(manifest_path)
     location = manifest_path.parent.resolve()
-    plain, build, dev = get_dependencies(manifest, location)
+    plain, build, dev = get_dependencies(None, manifest, location)
+
+    # Try to find the name of the package in the local workspaces
+    root_pkg = manifest.get('package').get('name')
+    plain[root_pkg] = {'version': '>=0.0.0'}
+
     dependencies = [*plain.items(), *build.items(), *dev.items()]
 
     return compose(dependencies, search_paths)

@@ -46,18 +46,12 @@ def main(argv=None):
     """
     parser = ArgumentParser()
     parser.add_argument('manifest_path', type=Path)
-    parser.add_argument(
-        'search_paths',
-        type=Path,
-        nargs='*',
-        help="List of local registry sources to search for packages."
-    )
-
+    parser.add_argument('search_path', type=Path, nargs='+')
     parser.add_argument(
         '--output-format', choices=('args', 'toml'), default='args')
     args = parser.parse_args(argv)
 
-    search_paths = [path.resolve() for path in args.search_paths]
+    search_paths = [path.resolve() for path in args.search_path]
     composition = load_and_compose(args.manifest_path, search_paths)
 
     if args.output_format == 'toml':

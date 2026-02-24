@@ -60,38 +60,6 @@ def _get_reference(specification):
     return specification.get('registry')
 
 
-def _get_available_crates(search_path):
-    """
-    Create a list of crates available from a directory
-
-    :param search_path: Local registry source to search for packages
-    :type search_path: Path
-
-    :returns: Collection of packages available within a directory and their versions
-    :rtype: dict
-
-    :returns: Collection of the directory and metadata information for a
-              specific pkgname+version
-    :rtype: dict
-    """
-    versions = defaultdict(set) # Skip duplicates in versions dict
-    pkgs_metadata = {}
-
-    # Iterate over all the paths provided
-    for manifest_path in search_path.glob('*/Cargo.toml'):
-        manifest = load_manifest(manifest_path)
-        pkgname = manifest.get('package', {}).get('name')
-        version = manifest.get('package', {}).get('version')
-
-        versions[pkgname].add(version)
-
-        # We are assuming here there won't be duplicated crates+version within the same search_path
-        # Should we throw a warning?
-        pkgs_metadata[f"{pkgname}+{version}"] = (manifest_path.parent, manifest)
-
-    return versions, pkgs_metadata
-
-
 def compose(dependencies, search_paths, online_build = True):
     """
     Compose a collection of crates which may satisfy given dependencies.

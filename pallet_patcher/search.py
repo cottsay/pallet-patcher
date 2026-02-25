@@ -112,8 +112,10 @@ def compose(dependencies, search_paths):
         solved_specifiers[name+str(version_spec)] = True
 
         if candidate is None:
-            # TO-DO: if offline builds, this will error since we rely on
-            # cargo to get anything missing
+            # We rely on cargo to pull from its default registry (crates.io)
+            # if we don't find a dependency locally.
+            # TO-DO(blast545): This might throw an error if we use
+            # pallet-patcher for auditing reasons.
             continue
 
         reference = _get_reference(specifications)

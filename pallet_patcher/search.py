@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
-from pallet_patcher.solver import solve_dependency, _parse_cargo_specifier
+from pallet_patcher.solver import solve_dependency
 
 
 def _get_available_crates(search_path):
@@ -87,41 +87,46 @@ def compose(dependencies, search_paths):
             # This case covers packages like: rustc-std-workspace-core
             # where it's listed name differs from the installation name
             # print(name, specification)
-            # core {'version': '1.0.0', 'optional': True, 'package': 'rustc-std-workspace-core'}
+            # core {'version': '1.0.0',
+            #    'optional': True, 'package': 'rustc-std-workspace-core'}
             name = specifications.get('package', name)
             version_spec = specifications.get('version', name)
         else:
             version_spec = specifications
 
         # If we already parsed a version_spec, do not repeat that
-        # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, libc==0.2.50, etc
+        # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, etc
         if name+str(version_spec) in solved_specifiers:
             continue
 
         candidate = None
-        # Priority mechanism, check the dependency paths in the order provided by the user of pallet-patcher
+        # Priority mechanism, check the dependency paths in the order provided
         for crates, metadada in dependency_paths_registered:
-            if crates[name] and (solved_version := solve_dependency(version_spec, crates[name])):
-                candidate = metadada[f"{name}+{solved_version}"]
-                break
+            if crates[name]:
+                solved_version = solve_dependency(version_spec, crates[name])
+                if solved_version:
+                    candidate = metadada[f'{name}+{solved_version}']
+                    break
 
         # Do not search again for versions specifiers that we already looked up
         solved_specifiers[name+str(version_spec)] = True
 
         if candidate is None:
-            # TO-DO: if offline builds, this will error since we rely on cargo to get anything missing
+            # TO-DO: if offline builds, this will error since we rely on
+            # cargo to get anything missing
             continue
 
         reference = _get_reference(specifications)
-        # Add the dependencies of the pkg to the list of packages that we need to find afterwards
+        # Add the dependencies of the pkg to the list of packages that we
+        # need to find afterwards
         location, manifest = candidate
         plain_deps, build_deps, _ = get_dependencies(manifest, location)
         queue.extend(plain_deps.items())
         queue.extend(build_deps.items())
 
-        # We also add the raw pkgname to the composition, because patches don't support
-        # Adding pkgname+version as part of the patch name
-        composition[name+"~"+solved_version] = (reference, location, name)
+        # We also add the raw pkgname to the composition, because patches
+        # don't support adding pkgname+version as part of the patch name
+        composition[name+'~'+solved_version] = (reference, location, name)
 
     return composition
 

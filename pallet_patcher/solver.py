@@ -69,7 +69,7 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
 
     # 5. Handle *
     if clean_spec == '*':
-        return SpecifierSet(">=0.0.0")
+        return SpecifierSet('>=0.0.0')
 
     # Fallback for standard Python specifiers (>=1.2, etc.)
     return SpecifierSet(clean_spec)

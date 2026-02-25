@@ -28,8 +28,11 @@ def test_dry():
     composition = compose(dependencies, search_paths)
     assert len(composition) == 5, f'{composition}'
 
+    # We expect 2 arguments per element in the composition
+    # Since the versioned version understand that we only need one
+    # of the versions of pkg-a, we only have 8 arguments
     arguments = get_cargo_arguments(composition)
-    assert len(arguments) == 10, f'{arguments}'
+    assert len(arguments) == 8, f'{arguments}'
 
     config = get_cargo_config(composition)
     assert config

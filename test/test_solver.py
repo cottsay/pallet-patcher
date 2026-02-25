@@ -67,6 +67,7 @@ def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
     ('<2.0', '<2.0'),        # Passthrough standard python
     ('==1.2.3', '==1.2.3'),  # Passthrough explicit equality
     ('', ''),                # Empty string handling
+    ('*', '>=0.0.0'),        # Expect finding any version = *
 ])
 def test_standard_python_fallback(input_str, expected_str_repr):
     """Tests that std Python specifiers or other strings are passed through."""

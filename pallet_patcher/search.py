@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
-from pallet_patcher.solver import solve_dependency
+from pallet_patcher.solver import solve_dependency, _parse_cargo_specifier
 
 
 def _get_available_crates(search_path):
@@ -115,7 +115,7 @@ def compose(dependencies, search_paths):
         reference = _get_reference(specifications)
         # Add the dependencies of the pkg to the list of packages that we need to find afterwards
         location, manifest = candidate
-        plain_deps, build_deps, _ = get_dependencies(name, manifest, location)
+        plain_deps, build_deps, _ = get_dependencies(manifest, location)
         queue.extend(plain_deps.items())
         queue.extend(build_deps.items())
 

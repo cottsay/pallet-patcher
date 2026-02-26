@@ -55,9 +55,9 @@ def test_get_available_crates_structure(mock_crates_dir):
         assert versions['alpha-lib'] == {'0.1.0'}
         assert versions['beta-lib'] == {'1.0.0', '2.0.0'}
 
-        key_alpha = 'alpha-lib+0.1.0'
-        key_beta_1 = 'beta-lib+1.0.0'
-        key_beta_2 = 'beta-lib+2.0.0'
+        key_alpha = 'alpha-lib::0.1.0'
+        key_beta_1 = 'beta-lib::1.0.0'
+        key_beta_2 = 'beta-lib::2.0.0'
 
         assert key_alpha in metadata
         assert key_beta_1 in metadata
@@ -97,8 +97,8 @@ def test_real_folder_integration():
     assert versions['pkg-d'] == {'0.0.0'}
     assert versions['pkg-e'] == {'0.0.0'}
 
-    key_d = 'pkg-d+0.0.0'
-    key_e = 'pkg-e+0.0.0'
+    key_d = 'pkg-d::0.0.0'
+    key_e = 'pkg-e::0.0.0'
 
     assert key_d in metadata
     assert key_e in metadata

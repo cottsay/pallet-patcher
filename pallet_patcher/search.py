@@ -40,7 +40,7 @@ def _get_available_crates(search_path):
 
         # We are assuming here there won't be duplicated crates+version within
         # the same search_path.
-        pkgs_metadata[f'{pkgname}+{version}'] = (
+        pkgs_metadata[f'{pkgname}::{version}'] = (
             manifest_path.parent, manifest)
 
     return versions, pkgs_metadata
@@ -105,7 +105,7 @@ def compose(dependencies, search_paths):
             if crates[name]:
                 solved_version = solve_dependency(version_spec, crates[name])
                 if solved_version:
-                    candidate = metadada[f'{name}+{solved_version}']
+                    candidate = metadada[f'{name}::{solved_version}']
                     break
 
         # Do not search again for versions specifiers that we already looked up

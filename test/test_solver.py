@@ -145,16 +145,41 @@ def test_solve_dependency_sorting_correctness():
     assert result == '1.10.0'
 
 
-def test_solve_dependency_invalid_input_handling():
-    """Test how the function handles non-integer version strings."""
-    # NOTE: The provided function uses `int(part)` which will crash on "beta".
-    # This test documents that behavior. If you want to support prereleases,
-    # the sort key in the function needs to change.
+def test_solve_dependency_prerelease_input_handling():
+    """Test that pre-release version strings are handled by the sort key."""
+    # packaging.version.Version handles pre-release tags like '-beta',
+    # normalizing them (e.g. '1.1.0-beta' -> '1.1.0b0').
     spec = '^1.0.0'
     available = ['1.0.0', '1.1.0-beta']
 
-    with pytest.raises(ValueError) as excinfo:
-        solve_dependency(spec, available)
+    # Should not crash; Version-based sort key handles pre-release
+    result = solve_dependency(spec, available)
+    # '1.1.0-beta' normalizes to '1.1.0b0' which is <1.1.0,
+    # so '1.0.0' is the highest non-pre-release match
+    assert result is not None
 
-    # Confirm it failed where we expected (in the sort lambda)
-    assert 'invalid literal for int()' in str(excinfo.value)
+
+@pytest.mark.parametrize('spec, available, expected', [
+    # Build metadata should not crash sorting
+    ('*', ['1.0.0+build42'], '1.0.0+build42'),
+
+    # Multiple versions with build metadata sort correctly
+    ('*', ['1.0.0+aaa', '2.0.0+bbb'], '2.0.0+bbb'),
+
+    # Build metadata mixed with plain versions
+    ('*', ['1.0.0', '1.5.0+meta', '2.0.0'], '2.0.0'),
+
+    # Caret spec with build metadata
+    ('^1.0.0',
+        ['1.0.0+build1', '1.9.0+build2', '2.0.0+build3'],
+        '1.9.0+build2'),
+
+    # Exact match with build metadata
+    ('=1.0.0', ['1.0.0+build42', '2.0.0'], '1.0.0+build42'),
+])
+def test_solve_dependency_build_metadata(spec, available, expected):
+    """Regression: versions with + build metadata must not crash solver."""
+    result = solve_dependency(spec, available)
+    assert result == expected, \
+        f"For spec '{spec}' and versions {available}, expected '{expected}'" \
+        f" but got '{result}'"

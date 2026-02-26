@@ -93,7 +93,7 @@ def solve_dependency(version_specifier, available_versions):
     # We sort them first to prioritize higher versions for the packages
     sorted_versions = sorted(
         available_versions,
-        key=lambda x: [int(part) for part in x.split('.')],
+        key=Version,
         reverse=True
     )
 

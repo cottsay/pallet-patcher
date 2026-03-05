@@ -24,11 +24,16 @@ def _get_available_crates(search_path):
               specific pkgname+version
     :rtype: dict
     """
+    manifest_paths = search_path.glob('*/Cargo.toml')
+    return _get_crates(manifest_paths)
+
+
+def _get_crates(manifest_paths):
     versions = defaultdict(set)  # Skip duplicates in versions dict
     pkgs_metadata = {}
 
-    # Iterate over all the paths provided
-    for manifest_path in search_path.glob('*/Cargo.toml'):
+    # Iterate over all the manifests provided
+    for manifest_path in manifest_paths:
         manifest = load_manifest(manifest_path)
         pkgname = manifest.get('package', {}).get('name')
         # TO-DO: In some cases, we want to crash if we can't find the package
@@ -76,17 +81,17 @@ def compose(dependencies, search_paths, *, seeds=None):
     :rtype: dict
     """
     dependency_paths_registered = []
+    if seeds:
+        manifest_paths = [seed / 'Cargo.toml' for seed in seeds]
+        crates_and_metadata = _get_crates(manifest_paths)
+        dependency_paths_registered.append(crates_and_metadata)
+
     for user_path in search_paths:
         crates_and_metadata = _get_available_crates(user_path)
         dependency_paths_registered.append(crates_and_metadata)
 
     composition = {}
     solved_specifiers = {}
-
-    for location in (seeds or ()):
-        manifest = load_manifest(location / 'Cargo.toml')
-        pkgname = manifest.get('package', {}).get('name')
-        candidates.setdefault(pkgname, []).append((location, manifest))
 
     queue = list(dependencies)
     while queue:

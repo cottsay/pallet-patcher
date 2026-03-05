@@ -58,7 +58,7 @@ def _get_reference(specification):
     return specification.get('registry')
 
 
-def compose(dependencies, search_paths):
+def compose(dependencies, search_paths, *, seeds=None):
     """
     Compose a collection of crates which may satisfy given dependencies.
 
@@ -67,6 +67,9 @@ def compose(dependencies, search_paths):
     :type dependencies: tuple
     :param search_paths: List of local registry sources to search for packages
     :type search_paths: list
+    :param seeds: List of package directories which are explicit candidates for
+      composition.
+    :type seeds: list
 
     :returns: Collection of packages which may satisfy the required
       dependencies.
@@ -79,6 +82,11 @@ def compose(dependencies, search_paths):
 
     composition = {}
     solved_specifiers = {}
+
+    for location in (seeds or ()):
+        manifest = load_manifest(location / 'Cargo.toml')
+        pkgname = manifest.get('package', {}).get('name')
+        candidates.setdefault(pkgname, []).append((location, manifest))
 
     queue = list(dependencies)
     while queue:

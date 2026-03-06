@@ -29,6 +29,7 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     # 3. Handle Caret (^1.2.3) - Maximal update (Compatible)
     # Rust: ^1.2.3 is the same as 1.2.3 (it's the default)
     # We strip the caret and let it fall through to the "Bare" logic below.
+
     if clean_spec.startswith('^'):
         clean_spec = clean_spec[1:]
 
@@ -65,11 +66,53 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
                     return SpecifierSet(f'>={clean_spec},<0.1.0')
 
         except ValueError:
-            pass  # Fallback to standard handling if parsing fails
+            pass
 
-    # 5. Handle *
+    # 5. Handle purely *
     if clean_spec == '*':
         return SpecifierSet('>=0.0.0')
+
+    # 6. Handle wildcards with inequalities (e.g., <=0.61.*)
+    # PEP 440 forbids inequalities combined with .*,
+    # so we convert them to hard boundaries
+    if clean_spec.endswith('.*'):
+        # Handle <=X.Y.* (Translates to < X.(Y+1))
+        if clean_spec.startswith('<='):
+            base_version = clean_spec[2:-2]  # strips '<=' and '.*'
+            parts = base_version.split('.')
+            try:
+                parts[-1] = str(int(parts[-1]) + 1)
+                return SpecifierSet(f"<{'.'.join(parts)}")
+            except ValueError:
+                pass
+
+        # Handle <X.Y.* (Translates to < X.Y)
+        elif clean_spec.startswith('<'):
+            base_version = clean_spec[1:-2]
+            return SpecifierSet(f'<{base_version}')
+
+        # Handle >=X.Y.* (Translates to >= X.Y)
+        elif clean_spec.startswith('>='):
+            base_version = clean_spec[2:-2]
+            return SpecifierSet(f'>={base_version}')
+
+        # Handle >X.Y.* (Translates to >= X.(Y+1))
+        elif clean_spec.startswith('>'):
+            base_version = clean_spec[1:-2]
+            parts = base_version.split('.')
+            try:
+                parts[-1] = str(int(parts[-1]) + 1)
+                return SpecifierSet(f">={'.'.join(parts)}")
+            except ValueError:
+                pass
+
+        # Handle ==X.Y.* and !=X.Y.* (Perfectly valid in Python)
+        elif clean_spec.startswith('==') or clean_spec.startswith('!='):
+            return SpecifierSet(clean_spec)
+
+        # Handle bare X.Y.* (Translates to ==X.Y.*)
+        elif clean_spec[0].isdigit():
+            return SpecifierSet(f'=={clean_spec}')
 
     # Fallback for standard Python specifiers (>=1.2, etc.)
     return SpecifierSet(clean_spec)

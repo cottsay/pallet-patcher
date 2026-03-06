@@ -68,6 +68,10 @@ def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
     ('==1.2.3', '==1.2.3'),  # Passthrough explicit equality
     ('', ''),                # Empty string handling
     ('*', '>=0.0.0'),        # Expect finding any version = *
+    ('<=0.61.*', '<0.62'),   # inequalities with patch wildcard
+    ('<0.61.*', '<0.61'),    # inequalities with patch wildcard
+    ('>=0.73.*', '>=0.73'),  # inequalities with patch wildcard
+    ('>0.73.*', '>=0.74'),   # inequalities with patch wildcard
 ])
 def test_standard_python_fallback(input_str, expected_str_repr):
     """Tests that std Python specifiers or other strings are passed through."""
@@ -121,6 +125,12 @@ def test_invalid_version_strings():
 
     # 8. Handling 'Bare' versions (Implies ^)
     ('1.2.0', ['1.2.0', '1.5.0', '2.0.0'], '1.5.0'),
+
+    # 9. wildcards in patch versions
+    ('>=1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.35.2'),
+    ('>1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.35.2'),
+    ('<=1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.34.4'),
+    ('<1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.33.3'),
 ])
 def test_solve_dependency_logic(spec, available, expected):
     """Verify that solver picks the highest ver that satisfies the spec."""

@@ -5,6 +5,7 @@ from collections import defaultdict
 import os
 from pathlib import Path
 
+from packaging.version import Version
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
 from pallet_patcher.solver import solve_dependency
@@ -39,7 +40,9 @@ def _get_crates(manifest_paths):
         # TO-DO: In some cases, we want to crash if we can't find the package
         if not pkgname:
             continue
-        version = manifest.get('package', {}).get('version') or '0.0.0'
+        version_manifest = manifest.get(
+            'package', {}).get('version') or '0.0.0'
+        version = str(Version(version_manifest))
 
         versions[pkgname].add(version)
 
@@ -141,7 +144,7 @@ def compose(dependencies, search_paths, *, seeds=None):
 
         # We also add the raw pkgname to the composition, because patches
         # don't support adding pkgname+version as part of the patch name
-        composition[name+'~'+solved_version] = (reference, location, name)
+        composition[name+'::'+solved_version] = (reference, location, name)
 
     return composition
 

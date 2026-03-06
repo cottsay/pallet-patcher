@@ -106,8 +106,8 @@ def test_different_versions_same_folder():
     }
     assert len(pkg_a_entries) == 2, \
         f'Expected 2 pkg-a entries, got {pkg_a_entries}'
-    assert 'pkg-a~1.0.0' in composition
-    assert 'pkg-a~1.1.0' in composition
+    assert 'pkg-a::1.0.0' in composition
+    assert 'pkg-a::1.1.0' in composition
 
 
 def test_different_versions_across_folders():
@@ -151,3 +151,28 @@ def test_same_version_spec_deduplicates():
     ]
     assert len(pkg_a_entries) == 1, \
         f'Expected 1 pkg-a entry (deduplicated), got {pkg_a_entries}'
+
+
+def test_pkgname_with_prerelease_works():
+    """Pre-release packages are properly parsed."""
+    # This failed because _get_crates was saving versions without
+    # a Version() conversion and later on resolved dependencies
+    # by sorting them based on Version objects rather on saved streams
+    # 0.11.1+wasi-snapshot-preview1 -> 0.11.1+wasi.snapshot.preview1
+    dependencies = [
+        ('wasi', '*'),
+    ]
+    search_paths = (
+        _PACKAGES_PATH / 'lower_layer',
+    )
+
+    composition = compose(dependencies, search_paths)
+
+    wasi_entries = {
+        k: v for k, v in composition.items() if v[2] == 'wasi'
+    }
+    assert len(wasi_entries) == 1, \
+        f'Expected 1 wasi entries, got {wasi_entries}'
+    # We are testing here that Version saves the the dep with the name
+    # we expect
+    assert 'wasi::0.11.1+wasi.snapshot.preview1' in composition

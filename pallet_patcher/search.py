@@ -5,8 +5,10 @@ from collections import defaultdict
 import os
 from pathlib import Path
 
+from packaging.version import Version
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
+from pallet_patcher.solver import solve_dependency
 
 
 def _get_available_crates(search_path):
@@ -23,23 +25,30 @@ def _get_available_crates(search_path):
               specific pkgname+version
     :rtype: dict
     """
+    manifest_paths = search_path.glob('*/Cargo.toml')
+    return _get_crates(manifest_paths)
+
+
+def _get_crates(manifest_paths):
     versions = defaultdict(set)  # Skip duplicates in versions dict
     pkgs_metadata = {}
 
-    # Iterate over all the paths provided
-    for manifest_path in search_path.glob('*/Cargo.toml'):
+    # Iterate over all the manifests provided
+    for manifest_path in manifest_paths:
         manifest = load_manifest(manifest_path)
         pkgname = manifest.get('package', {}).get('name')
         # TO-DO: In some cases, we want to crash if we can't find the package
         if not pkgname:
             continue
-        version = manifest.get('package', {}).get('version') or '0.0.0'
+        version_manifest = manifest.get(
+            'package', {}).get('version') or '0.0.0'
+        version = str(Version(version_manifest))
 
         versions[pkgname].add(version)
 
         # We are assuming here there won't be duplicated crates+version within
         # the same search_path.
-        pkgs_metadata[f'{pkgname}+{version}'] = (
+        pkgs_metadata[f'{pkgname}::{version}'] = (
             manifest_path.parent, manifest)
 
     return versions, pkgs_metadata
@@ -74,52 +83,68 @@ def compose(dependencies, search_paths, *, seeds=None):
       dependencies.
     :rtype: dict
     """
-    search_paths = list(search_paths)
-    composition = {}
-    candidates = {}
+    dependency_paths_registered = []
+    if seeds:
+        manifest_paths = [seed / 'Cargo.toml' for seed in seeds]
+        crates_and_metadata = _get_crates(manifest_paths)
+        dependency_paths_registered.append(crates_and_metadata)
 
-    for location in (seeds or ()):
-        manifest = load_manifest(location / 'Cargo.toml')
-        pkgname = manifest.get('package', {}).get('name')
-        candidates.setdefault(pkgname, []).append((location, manifest))
+    for user_path in search_paths:
+        crates_and_metadata = _get_available_crates(user_path)
+        dependency_paths_registered.append(crates_and_metadata)
+
+    composition = {}
+    solved_specifiers = {}
 
     queue = list(dependencies)
     while queue:
         name, specifications = queue.pop(0)
         if isinstance(specifications, dict):
+            # This case covers packages like: rustc-std-workspace-core
+            # where it's listed name differs from the installation name
+            # print(name, specification)
+            # core {'version': '1.0.0',
+            #    'optional': True, 'package': 'rustc-std-workspace-core'}
             name = specifications.get('package', name)
+            version_spec = specifications.get('version', name)
+        else:
+            version_spec = specifications
 
-        if name in composition:
-            reference = _get_reference(specifications)
-            composition[name][0].add(reference)
+        # If we already parsed a version_spec, do not repeat that
+        # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, etc
+        if name+str(version_spec) in solved_specifiers:
             continue
 
-        candidate = candidates.get(name)
-        while candidate is None and search_paths:
-            search_path = search_paths.pop(0)
-            layer = {}
-            for manifest_path in search_path.glob('*/Cargo.toml'):
-                manifest = load_manifest(manifest_path)
-                pkgname = manifest.get('package', {}).get('name')
-                if pkgname in candidates:
-                    continue
-                layer.setdefault(pkgname, []).append(
-                    (manifest_path.parent, manifest))
-            candidate = layer.get(name)
-            candidates.update(layer)
+        candidate = None
+        # Priority mechanism, check the dependency paths in the order provided
+        for crates, metadada in dependency_paths_registered:
+            if crates[name]:
+                solved_version = solve_dependency(version_spec, crates[name])
+                if solved_version:
+                    candidate = metadada[f'{name}::{solved_version}']
+                    break
+
+        # Do not search again for versions specifiers that we already looked up
+        solved_specifiers[name+str(version_spec)] = True
 
         if candidate is None:
+            # We rely on cargo to pull from its default registry (crates.io)
+            # if we don't find a dependency locally.
+            # TO-DO(blast545): This might throw an error if we use
+            # pallet-patcher for auditing reasons.
             continue
 
         reference = _get_reference(specifications)
-        locations = set()
-        for location, manifest in candidate:
-            locations.add(location)
-            plain_deps, build_deps, _ = get_dependencies(manifest, location)
-            queue.extend(plain_deps.items())
-            queue.extend(build_deps.items())
+        # Add the dependencies of the pkg to the list of packages that we
+        # need to find afterwards
+        location, manifest = candidate
+        plain_deps, build_deps, _ = get_dependencies(manifest, location)
+        queue.extend(plain_deps.items())
+        queue.extend(build_deps.items())
 
-        composition[name] = ({reference}, locations)
+        # We also add the raw pkgname to the composition, because patches
+        # don't support adding pkgname+version as part of the patch name
+        composition[name+'::'+solved_version] = (reference, location, name)
 
     return composition
 
@@ -141,25 +166,20 @@ def get_cargo_arguments(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     arguments = set()
-    for name, (references, candidates) in composition.items():
-        for reference in references:
-            if reference is None:
-                reference = default_registry
-            elif any(
-                candidate.as_uri() == reference
-                for candidate in candidates
-            ):
-                # Cargo does not allow a patch to point to the same location as
-                # the original dependency specification. If we encounter this,
-                # just skip the reference entirely since it already points to
-                # at least one of our candidates.
-                continue
-            for idx, candidate in enumerate(candidates):
-                # Specifically use ~, which is valid in TOML but not in a
-                # Cargo package name to reduce the likelihood of a collision
-                section = f"patch.'{reference}'.'{name}~{idx}'"
-                arguments.add(f"--config={section}.package='{name}'")
-                arguments.add(f"--config={section}.path='{candidate}'")
+    for versioned_name, (reference, candidate, pkgname) in composition.items():
+        # I'm not sure how this will work with user custom references here
+        if not reference:
+            reference = default_registry
+        elif candidate.as_uri() == reference:
+            # Cargo does not allow a patch to point to the same location as
+            # the original dependency specification. If we encounter this,
+            # just skip the reference entirely since it already points to
+            # at least one of our candidates.
+            continue
+
+        section = f"patch.'{reference}'.'{versioned_name}'"
+        arguments.add(f"--config={section}.package='{pkgname}'")
+        arguments.add(f"--config={section}.path='{candidate}'")
     return sorted(arguments)
 
 
@@ -180,25 +200,19 @@ def get_cargo_config(composition, default_registry=None):
         if not default_registry:
             default_registry = 'crates-io'
     sections = set()
-    for name, (references, candidates) in composition.items():
-        for reference in references:
-            if reference is None:
-                reference = default_registry
-            elif any(
-                candidate.as_uri() == reference
-                for candidate in candidates
-            ):
-                # Cargo does not allow a patch to point to the same location as
-                # the original dependency specification. If we encounter this,
-                # just skip the reference entirely since it already points to
-                # at least one of our candidates.
-                continue
-            for idx, candidate in enumerate(candidates):
-                # Specifically use ~, which is valid in TOML but not in a
-                # Cargo package name to reduce the likelihood of a collision
-                sections.add('\n'.join((
-                    f"[patch.'{reference}'.'{name}~{idx}']",
-                    f"package = '{name}'",
-                    f"path = '{candidate}'",
-                )))
+    for versioned_name, (reference, candidate, pkgname) in composition.items():
+        if reference is None:
+            reference = default_registry
+        elif candidate.as_uri() == reference:
+            # Cargo does not allow a patch to point to the same location as
+            # the original dependency specification. If we encounter this,
+            # just skip the reference entirely since it already points to
+            # at least one of our candidates.
+            continue
+
+        sections.add('\n'.join((
+            f"[patch.'{reference}'.'{versioned_name}']",
+            f"package = '{pkgname}'",
+            f"path = '{candidate}'",
+        )))
     return '\n\n'.join(sorted(sections))

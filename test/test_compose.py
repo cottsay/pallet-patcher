@@ -28,8 +28,11 @@ def test_dry():
     composition = compose(dependencies, search_paths)
     assert len(composition) == 5, f'{composition}'
 
+    # We expect 2 arguments per element in the composition
+    # Since the versioned version understand that we only need one
+    # of the versions of pkg-a, we only have 8 arguments
     arguments = get_cargo_arguments(composition)
-    assert len(arguments) == 10, f'{arguments}'
+    assert len(arguments) == 8, f'{arguments}'
 
     config = get_cargo_config(composition)
     assert config
@@ -79,3 +82,97 @@ def test_cargo_config(tmpdir):
         [_CARGO, 'metadata', '--format-version=1', '--offline'],
         cwd=str(pkg_e),
         check=True)
+
+
+def test_different_versions_same_folder():
+    """Two different version specs of pkg-a resolve to distinct entries."""
+    # pkg-f depends on pkg-a =1.0.0 directly, and on pkg-b which
+    # depends on pkg-a * (resolves to 1.1.0). Both versions live
+    # in lower_layer.
+    # TO-DO: once dedup checks whether an already-resolved version
+    # satisfies the new spec, '*' should reuse the existing 1.0.0
+    # and this test should expect 1 pkg-a entry instead.
+    dependencies = [
+        ('pkg-f', '*'),
+    ]
+    search_paths = (
+        _PACKAGES_PATH / 'lower_layer',
+    )
+
+    composition = compose(dependencies, search_paths)
+
+    pkg_a_entries = {
+        k: v for k, v in composition.items() if v[2] == 'pkg-a'
+    }
+    assert len(pkg_a_entries) == 2, \
+        f'Expected 2 pkg-a entries, got {pkg_a_entries}'
+    assert 'pkg-a::1.0.0' in composition
+    assert 'pkg-a::1.1.0' in composition
+
+
+def test_different_versions_across_folders():
+    """Version resolution works across multiple search paths."""
+    # Same scenario but search_paths spans both layers.
+    # pkg-a only lives in lower_layer, so both versions should
+    # still resolve from there.
+    dependencies = [
+        ('pkg-f', '*'),
+    ]
+    search_paths = (
+        _PACKAGES_PATH / 'upper_layer',
+        _PACKAGES_PATH / 'lower_layer',
+    )
+
+    composition = compose(dependencies, search_paths)
+
+    pkg_a_entries = {
+        k: v for k, v in composition.items() if v[2] == 'pkg-a'
+    }
+    assert len(pkg_a_entries) == 2, \
+        f'Expected 2 pkg-a entries, got {pkg_a_entries}'
+
+
+def test_same_version_spec_deduplicates():
+    """Identical version specs for the same crate produce only one entry."""
+    # pkg-e has pkg-a as a dev-dep with '*', and transitively via
+    # pkg-b which also depends on pkg-a '*'. Same spec = one entry.
+    dependencies = [
+        ('pkg-e', '*'),
+    ]
+    search_paths = (
+        _PACKAGES_PATH / 'upper_layer',
+        _PACKAGES_PATH / 'lower_layer',
+    )
+
+    composition = compose(dependencies, search_paths)
+
+    pkg_a_entries = [
+        k for k in composition if composition[k][2] == 'pkg-a'
+    ]
+    assert len(pkg_a_entries) == 1, \
+        f'Expected 1 pkg-a entry (deduplicated), got {pkg_a_entries}'
+
+
+def test_pkgname_with_prerelease_works():
+    """Pre-release packages are properly parsed."""
+    # This failed because _get_crates was saving versions without
+    # a Version() conversion and later on resolved dependencies
+    # by sorting them based on Version objects rather on saved streams
+    # 0.11.1+wasi-snapshot-preview1 -> 0.11.1+wasi.snapshot.preview1
+    dependencies = [
+        ('wasi', '*'),
+    ]
+    search_paths = (
+        _PACKAGES_PATH / 'lower_layer',
+    )
+
+    composition = compose(dependencies, search_paths)
+
+    wasi_entries = {
+        k: v for k, v in composition.items() if v[2] == 'wasi'
+    }
+    assert len(wasi_entries) == 1, \
+        f'Expected 1 wasi entries, got {wasi_entries}'
+    # We are testing here that Version saves the the dep with the name
+    # we expect
+    assert 'wasi::0.11.1+wasi.snapshot.preview1' in composition

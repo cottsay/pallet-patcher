@@ -81,7 +81,7 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
         return SpecifierSet('>=0.0.0')
 
     # 6. Match comparison operators and wildcards
-    comparison_op = ""
+    comparison_op = ''
     for maybe_op in ('<=', '>=', '<', '>'):
         if clean_spec.startswith(maybe_op):
             comparison_op = maybe_op
@@ -107,20 +107,20 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
                 except ValueError:
                     pass
             elif comparison_op == '<':
-                return SpecifierSet(f"<{base_version}")
+                return SpecifierSet(f'<{base_version}')
             elif comparison_op == '>=':
-                return SpecifierSet(f">={base_version}")
+                return SpecifierSet(f'>={base_version}')
             elif comparison_op == '>':
                 try:
                     parts[-1] = str(int(parts[-1]) + 1)
-                    return SpecifierSet(f">={'.'.join(parts)}")
+                    return SpecifierSet(f'>={".".join(parts)}')
                 except ValueError:
                     pass
-        return SpecifierSet(f"{comparison_op}{base_version}")
+        return SpecifierSet(f'{comparison_op}{base_version}')
 
     if not comparison_op and is_wildcard:
         # Bare wildcards like '0.4.*' translate to '==0.4.*'
-        return SpecifierSet(f"=={base_version}.*")
+        return SpecifierSet(f'=={base_version}.*')
 
     # Fallback for standard Python specifiers (if anything not covered)
     return SpecifierSet(clean_spec)

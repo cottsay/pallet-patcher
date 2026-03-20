@@ -10,7 +10,16 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
 
     # 1. Handle "Explicit Equals" (=1.2.3 -> ==1.2.3)
     if clean_spec.startswith('=') and not clean_spec.startswith('=='):
-        return SpecifierSet(f'=={clean_spec[1:]}')
+        # Strip just in case there are spaces like "= 1.2"
+        version_part = clean_spec[1:].strip()
+        parts = version_part.split('.')
+
+        # If it's missing the minor or patch version,
+        # Cargo treats it as a wildcard
+        if len(parts) < 3:
+            return SpecifierSet(f'=={version_part}.*')
+        else:
+            return SpecifierSet(f'=={version_part}')
 
     # 2. Handle Tilde (~1.2.3) - Minimal update
     if clean_spec.startswith('~'):
@@ -29,7 +38,6 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     # 3. Handle Caret (^1.2.3) - Maximal update (Compatible)
     # Rust: ^1.2.3 is the same as 1.2.3 (it's the default)
     # We strip the caret and let it fall through to the "Bare" logic below.
-
     if clean_spec.startswith('^'):
         clean_spec = clean_spec[1:]
 
@@ -72,49 +80,49 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     if clean_spec == '*':
         return SpecifierSet('>=0.0.0')
 
-    # 6. Handle wildcards with inequalities (e.g., <=0.61.*)
-    # PEP 440 forbids inequalities combined with .*,
-    # so we convert them to hard boundaries
-    if clean_spec.endswith('.*'):
-        # Handle <=X.Y.* (Translates to < X.(Y+1))
-        if clean_spec.startswith('<='):
-            base_version = clean_spec[2:-2]  # strips '<=' and '.*'
-            parts = base_version.split('.')
-            try:
-                parts[-1] = str(int(parts[-1]) + 1)
-                return SpecifierSet(f"<{'.'.join(parts)}")
-            except ValueError:
-                pass
+    # 6. Match comparison operators and wildcards
+    comparison_op = ""
+    for maybe_op in ('<=', '>=', '<', '>'):
+        if clean_spec.startswith(maybe_op):
+            comparison_op = maybe_op
+            break
 
-        # Handle <X.Y.* (Translates to < X.Y)
-        elif clean_spec.startswith('<'):
-            base_version = clean_spec[1:-2]
-            return SpecifierSet(f'<{base_version}')
+    # Isolate base version and check for wildcards
+    base_version = clean_spec[len(comparison_op):].strip()
+    is_wildcard = base_version.endswith('.*')
 
-        # Handle >=X.Y.* (Translates to >= X.Y)
-        elif clean_spec.startswith('>='):
-            base_version = clean_spec[2:-2]
-            return SpecifierSet(f'>={base_version}')
+    if is_wildcard:
+        base_version = base_version[:-2]  # Strip '.*'
 
-        # Handle >X.Y.* (Translates to >= X.(Y+1))
-        elif clean_spec.startswith('>'):
-            base_version = clean_spec[1:-2]
-            parts = base_version.split('.')
-            try:
-                parts[-1] = str(int(parts[-1]) + 1)
-                return SpecifierSet(f">={'.'.join(parts)}")
-            except ValueError:
-                pass
+    parts = base_version.split('.')
+    is_partial = len(parts) < 3
 
-        # Handle ==X.Y.* and !=X.Y.* (Perfectly valid in Python)
-        elif clean_spec.startswith('==') or clean_spec.startswith('!='):
-            return SpecifierSet(clean_spec)
+    # 4. Process directional comparisons (<, <=, >, >=) with partials/wildcards
+    if comparison_op in ('<', '<=', '>', '>='):
+        if is_wildcard or is_partial:
+            if comparison_op == '<=':
+                try:
+                    parts[-1] = str(int(parts[-1]) + 1)
+                    return SpecifierSet(f"<{'.'.join(parts)}")
+                except ValueError:
+                    pass
+            elif comparison_op == '<':
+                return SpecifierSet(f"<{base_version}")
+            elif comparison_op == '>=':
+                return SpecifierSet(f">={base_version}")
+            elif comparison_op == '>':
+                try:
+                    parts[-1] = str(int(parts[-1]) + 1)
+                    return SpecifierSet(f">={'.'.join(parts)}")
+                except ValueError:
+                    pass
+        return SpecifierSet(f"{comparison_op}{base_version}")
 
-        # Handle bare X.Y.* (Translates to ==X.Y.*)
-        elif clean_spec[0].isdigit():
-            return SpecifierSet(f'=={clean_spec}')
+    if not comparison_op and is_wildcard:
+        # Bare wildcards like '0.4.*' translate to '==0.4.*'
+        return SpecifierSet(f"=={base_version}.*")
 
-    # Fallback for standard Python specifiers (>=1.2, etc.)
+    # Fallback for standard Python specifiers (if anything not covered)
     return SpecifierSet(clean_spec)
 
 

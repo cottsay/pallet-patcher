@@ -1,7 +1,7 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
-from __future__ import annotations
+from typing import Collection
 
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
@@ -128,7 +128,7 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     return SpecifierSet(clean_spec)
 
 
-def _parse_cargo_specifiers(spec_str: str) -> tuple[SpecifierSet, ...]:
+def _parse_cargo_specifiers(spec_str: str) -> Collection[SpecifierSet]:
     return tuple(map(_parse_cargo_specifier, spec_str.split(',')))
 
 

@@ -1,7 +1,7 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
-from __future__ import annotations
+from typing import Collection
 
 from packaging.specifiers import InvalidSpecifier
 from packaging.specifiers import SpecifierSet
@@ -131,7 +131,7 @@ def test_invalid_version_strings():
     ('>=1.0.0, <2.0.0, !=1.5.0', ('>=1.0.0', '<2.0.0', '!=1.5.0'))
 ])
 def test_separated_cargo_specifiers(
-        input_str: str, expected_reqs: tuple[str, ...]):
+        input_str: str, expected_reqs: Collection[str]):
     """Ensure that multiple specifiers can be received and parsed correctly."""
     result = _parse_cargo_specifiers(input_str)
 

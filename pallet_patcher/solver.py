@@ -1,6 +1,8 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
+from __future__ import annotations
+
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
@@ -126,6 +128,10 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
     return SpecifierSet(clean_spec)
 
 
+def _parse_cargo_specifiers(spec_str: str) -> tuple[SpecifierSet, ...]:
+    return tuple(map(_parse_cargo_specifier, spec_str.split(',')))
+
+
 def solve_dependency(version_specifier, available_versions):
     """
     Find if ver available in versions_dict matches the expected spec provided.
@@ -139,7 +145,7 @@ def solve_dependency(version_specifier, available_versions):
     :returns: matched version string, or None if available ver don't match
     :rtype: dict
     """
-    spec = _parse_cargo_specifier(version_specifier)
+    specs = _parse_cargo_specifiers(version_specifier)
 
     # We sort them first to prioritize higher versions for the packages
     sorted_versions = sorted(
@@ -152,7 +158,7 @@ def solve_dependency(version_specifier, available_versions):
     for version in sorted_versions:
         v = Version(version)
         # print(v, spec)
-        if v in spec:
+        if all(v in spec for spec in specs):
             return str(v)
 
     return None

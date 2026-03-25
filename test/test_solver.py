@@ -1,8 +1,12 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
+from __future__ import annotations
+
 from packaging.specifiers import InvalidSpecifier
-from pallet_patcher.solver import _parse_cargo_specifier, solve_dependency
+from packaging.specifiers import SpecifierSet
+from pallet_patcher.solver import _parse_cargo_specifier
+from pallet_patcher.solver import _parse_cargo_specifiers, solve_dependency
 import pytest
 
 
@@ -117,6 +121,31 @@ def test_invalid_version_strings():
         _parse_cargo_specifier('invalid_string_with_char')
 
 
+@pytest.mark.parametrize('input_str, expected_reqs', [
+    ('>=0.3.1', ('>=0.3.1',)),                                  # Single case
+    ('>=0.3.1, <=0.4', ('>=0.3.1', '<0.5')),                    # Std range
+    ('^1.2.3, !=1.2.5', ('>=1.2.3,<2.0.0', '!=1.2.5')),         # Caret (^)
+    ('~1.2, <1.2.9', ('>=1.2.0,<1.3.0', '<1.2.9')),             # Tilde (~)
+    ('1.2.*, !=1.2.5', ('==1.2.*', '!=1.2.5')),                 # Wildcards
+    ('  >= 1.0.0  ,   < 2.0.0 ', ('>=1.0.0', '<2.0.0')),        # Whitespace
+    ('>=1.0.0, <2.0.0, !=1.5.0', ('>=1.0.0', '<2.0.0', '!=1.5.0'))
+])
+def test_separated_cargo_specifiers(
+        input_str: str, expected_reqs: tuple[str, ...]):
+    """Ensure that multiple specifiers can be received and parsed correctly."""
+    result = _parse_cargo_specifiers(input_str)
+
+    # Convert the expected strings into a set of SpecifierSet objects
+    expected_sets = {SpecifierSet(req) for req in expected_reqs}
+
+    # Check if every returned element of result is in the available set
+    for spec in result:
+        assert spec in expected_sets
+
+    # Ensures we didn't return fewer or more elements than expected
+    assert len(result) == len(expected_sets)
+
+
 @pytest.mark.parametrize('spec, available, expected', [
     # 1. Basic Caret Priority
     # ^1.2.0 allows >=1.2.0, <2.0.0.
@@ -162,6 +191,11 @@ def test_invalid_version_strings():
     ('>0.48.*', ['0.48.0', '0.52.0', '0.61.2'], '0.61.2'),
     ('<=0.52.*', ['0.48.0', '0.52.0', '0.61.2'], '0.52.0'),
     ('<0.52.*', ['0.48.0', '0.52.0', '0.61.2'], '0.48.0'),
+
+    # 10. Multiple specifiers
+    ('>=0.3.1, <=0.4', ['0.3.1', '0.4.5', '0.5.2'], '0.4.5'),
+    ('1.2.*, !=1.2.5', ['1.2.1', '1.2.3', '1.2.5', '2.1.2'], '1.2.3'),
+
 ])
 def test_solve_dependency_logic(spec, available, expected):
     """Verify that solver picks the highest ver that satisfies the spec."""

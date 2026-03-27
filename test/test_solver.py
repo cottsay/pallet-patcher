@@ -1,15 +1,21 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
+from typing import Collection
+
 from packaging.specifiers import InvalidSpecifier
-from pallet_patcher.solver import _parse_cargo_specifier, solve_dependency
+from packaging.specifiers import SpecifierSet
+from pallet_patcher.solver import _parse_cargo_specifier
+from pallet_patcher.solver import _parse_cargo_specifiers, solve_dependency
 import pytest
 
 
 # Test code generated with LLM help
 @pytest.mark.parametrize('r_input, expected_matches, expected_non_matches', [
-    # 1. Explicit Equals (=)
+    # 1. Explicit Equals (=) (default expression in Cargo)
     ('=1.2.3', ['1.2.3'], ['1.2.4', '1.2.2']),
+    ('=1.2', ['1.2.0', '1.2.3', '1.2.9'], ['1.1.9', '1.3.2']),
+    ('=1', ['1.0.0', '1.4.7', '1.78.0'], ['0.9.9', '2.0.0']),
 
     # 2. Tilde Requirements (~)
     # ~1.2.3 := >=1.2.3, <1.3.0
@@ -42,6 +48,29 @@ import pytest
     # Case B.4: ^0.0 (Minor == 0, Patch missing) := >=0.0, <0.1.0
     ('^0.0', ['0.0.0', '0.0.5'], ['0.1.0']),
     ('0.0', ['0.0.1'], ['0.1.0']),
+
+    # Inequality comparisons
+    ('<=0.4', ['0.4.1'], ['0.5.0']),
+    ('<0.5', ['0.4.1'], ['0.5.0']),  # Same as above
+    ('>=0.5', ['0.5.0'], ['0.4.1']),
+    ('>0.4', ['0.5.0'], ['0.4.1']),  # Same as above
+
+    # Wildcards
+    ('0.4.*', ['0.4.1'], ['0.5.0']),
+    ('0.4.*', ['0.4.1'], ['0.5.0']),
+    ('0.*', ['0.1.0', '0.4.1', '0.5.0'], ['1.0.0']),
+    # ('*', ['0.0.1', '0.5.1', '1.2.3'], []),
+
+    # Wildcard and comparison
+    ('>=0.48.*', ['0.48.0', '0.52.0', '0.61.2'], ['0.47.0']),
+    ('>0.48.*', ['0.52.0', '0.61.2'], ['0.48.0']),
+    ('<=0.52.*', ['0.48.0', '0.52.0'], ['0.61.2']),
+    ('<0.52.*', ['0.48.0'], ['0.52.0', '0.61.2']),
+
+    ('>=1.*', ['1.1.2', '2.2.3'], ['0.9.0']),
+    ('>1.*', ['2.2.3'], ['0.9.0', '1.1.2']),
+    ('<=1.*', ['0.9.0', '1.1.2'], ['2.2.3']),
+    ('<1.*', ['0.9.0'], ['1.1.2', '2.2.3']),
 ])
 def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
     """
@@ -67,6 +96,11 @@ def test_rust_specifier_logic(r_input, expected_matches, expected_non_matches):
     ('<2.0', '<2.0'),        # Passthrough standard python
     ('==1.2.3', '==1.2.3'),  # Passthrough explicit equality
     ('', ''),                # Empty string handling
+    ('*', '>=0.0.0'),        # Expect finding any version = *
+    ('<=0.61.*', '<0.62'),   # inequalities with patch wildcard
+    ('<0.61.*', '<0.61'),    # inequalities with patch wildcard
+    ('>=0.73.*', '>=0.73'),  # inequalities with patch wildcard
+    ('>0.73.*', '>=0.74'),   # inequalities with patch wildcard
 ])
 def test_standard_python_fallback(input_str, expected_str_repr):
     """Tests that std Python specifiers or other strings are passed through."""
@@ -85,6 +119,31 @@ def test_invalid_version_strings():
     # This acts as both the try/except and the assertion
     with pytest.raises((ValueError, InvalidSpecifier)):
         _parse_cargo_specifier('invalid_string_with_char')
+
+
+@pytest.mark.parametrize('input_str, expected_reqs', [
+    ('>=0.3.1', ('>=0.3.1',)),                                  # Single case
+    ('>=0.3.1, <=0.4', ('>=0.3.1', '<0.5')),                    # Std range
+    ('^1.2.3, !=1.2.5', ('>=1.2.3,<2.0.0', '!=1.2.5')),         # Caret (^)
+    ('~1.2, <1.2.9', ('>=1.2.0,<1.3.0', '<1.2.9')),             # Tilde (~)
+    ('1.2.*, !=1.2.5', ('==1.2.*', '!=1.2.5')),                 # Wildcards
+    ('  >= 1.0.0  ,   < 2.0.0 ', ('>=1.0.0', '<2.0.0')),        # Whitespace
+    ('>=1.0.0, <2.0.0, !=1.5.0', ('>=1.0.0', '<2.0.0', '!=1.5.0'))
+])
+def test_separated_cargo_specifiers(
+        input_str: str, expected_reqs: Collection[str]):
+    """Ensure that multiple specifiers can be received and parsed correctly."""
+    result = _parse_cargo_specifiers(input_str)
+
+    # Convert the expected strings into a set of SpecifierSet objects
+    expected_sets = {SpecifierSet(req) for req in expected_reqs}
+
+    # Check if every returned element of result is in the available set
+    for spec in result:
+        assert spec in expected_sets
+
+    # Ensures we didn't return fewer or more elements than expected
+    assert len(result) == len(expected_sets)
 
 
 @pytest.mark.parametrize('spec, available, expected', [
@@ -120,6 +179,23 @@ def test_invalid_version_strings():
 
     # 8. Handling 'Bare' versions (Implies ^)
     ('1.2.0', ['1.2.0', '1.5.0', '2.0.0'], '1.5.0'),
+
+    # 9. wildcards in patch versions
+    ('>=1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.35.2'),
+    ('>1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.35.2'),
+    ('<=1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.34.4'),
+    ('<1.34.*', ['1.33.3', '1.34.4', '1.34.0', '1.35.2'], '1.33.3'),
+
+    # # These are taken from the real world, using windows-sys
+    ('>=0.48.*', ['0.48.0', '0.52.0', '0.61.2'], '0.61.2'),
+    ('>0.48.*', ['0.48.0', '0.52.0', '0.61.2'], '0.61.2'),
+    ('<=0.52.*', ['0.48.0', '0.52.0', '0.61.2'], '0.52.0'),
+    ('<0.52.*', ['0.48.0', '0.52.0', '0.61.2'], '0.48.0'),
+
+    # 10. Multiple specifiers
+    ('>=0.3.1, <=0.4', ['0.3.1', '0.4.5', '0.5.2'], '0.4.5'),
+    ('1.2.*, !=1.2.5', ['1.2.1', '1.2.3', '1.2.5', '2.1.2'], '1.2.3'),
+
 ])
 def test_solve_dependency_logic(spec, available, expected):
     """Verify that solver picks the highest ver that satisfies the spec."""
@@ -144,16 +220,41 @@ def test_solve_dependency_sorting_correctness():
     assert result == '1.10.0'
 
 
-def test_solve_dependency_invalid_input_handling():
-    """Test how the function handles non-integer version strings."""
-    # NOTE: The provided function uses `int(part)` which will crash on "beta".
-    # This test documents that behavior. If you want to support prereleases,
-    # the sort key in the function needs to change.
+def test_solve_dependency_prerelease_input_handling():
+    """Test that pre-release version strings are handled by the sort key."""
+    # packaging.version.Version handles pre-release tags like '-beta',
+    # normalizing them (e.g. '1.1.0-beta' -> '1.1.0b0').
     spec = '^1.0.0'
     available = ['1.0.0', '1.1.0-beta']
 
-    with pytest.raises(ValueError) as excinfo:
-        solve_dependency(spec, available)
+    # Should not crash; Version-based sort key handles pre-release
+    result = solve_dependency(spec, available)
+    # '1.1.0-beta' normalizes to '1.1.0b0' which is <1.1.0,
+    # so '1.0.0' is the highest non-pre-release match
+    assert result is not None
 
-    # Confirm it failed where we expected (in the sort lambda)
-    assert 'invalid literal for int()' in str(excinfo.value)
+
+@pytest.mark.parametrize('spec, available, expected', [
+    # Build metadata should not crash sorting
+    ('*', ['1.0.0+build42'], '1.0.0+build42'),
+
+    # Multiple versions with build metadata sort correctly
+    ('*', ['1.0.0+aaa', '2.0.0+bbb'], '2.0.0+bbb'),
+
+    # Build metadata mixed with plain versions
+    ('*', ['1.0.0', '1.5.0+meta', '2.0.0'], '2.0.0'),
+
+    # Caret spec with build metadata
+    ('^1.0.0',
+        ['1.0.0+build1', '1.9.0+build2', '2.0.0+build3'],
+        '1.9.0+build2'),
+
+    # Exact match with build metadata
+    ('=1.0.0', ['1.0.0+build42', '2.0.0'], '1.0.0+build42'),
+])
+def test_solve_dependency_build_metadata(spec, available, expected):
+    """Regression: versions with + build metadata must not crash solver."""
+    result = solve_dependency(spec, available)
+    assert result == expected, \
+        f"For spec '{spec}' and versions {available}, expected '{expected}'" \
+        f" but got '{result}'"

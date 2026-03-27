@@ -1,6 +1,8 @@
 # Copyright 2025 Open Source Robotics Foundation, Inc.
 # Licensed under the Apache License, Version 2.0
 
+from typing import Collection
+
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
@@ -10,7 +12,16 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
 
     # 1. Handle "Explicit Equals" (=1.2.3 -> ==1.2.3)
     if clean_spec.startswith('=') and not clean_spec.startswith('=='):
-        return SpecifierSet(f'=={clean_spec[1:]}')
+        # Strip just in case there are spaces like "= 1.2"
+        version_part = clean_spec[1:].strip()
+        parts = version_part.split('.')
+
+        # If it's missing the minor or patch version,
+        # Cargo treats it as a wildcard
+        if len(parts) < 3:
+            return SpecifierSet(f'=={version_part}.*')
+        else:
+            return SpecifierSet(f'=={version_part}')
 
     # 2. Handle Tilde (~1.2.3) - Minimal update
     if clean_spec.startswith('~'):
@@ -65,10 +76,60 @@ def _parse_cargo_specifier(spec_str: str) -> SpecifierSet:
                     return SpecifierSet(f'>={clean_spec},<0.1.0')
 
         except ValueError:
-            pass  # Fallback to standard handling if parsing fails
+            pass
 
-    # Fallback for standard Python specifiers (>=1.2, etc.)
+    # 5. Handle purely *
+    if clean_spec == '*':
+        return SpecifierSet('>=0.0.0')
+
+    # 6. Match comparison operators and wildcards
+    comparison_op = ''
+    for maybe_op in ('<=', '>=', '<', '>'):
+        if clean_spec.startswith(maybe_op):
+            comparison_op = maybe_op
+            break
+
+    # Isolate base version and check for wildcards
+    base_version = clean_spec[len(comparison_op):].strip()
+    is_wildcard = base_version.endswith('.*')
+
+    if is_wildcard:
+        base_version = base_version[:-2]  # Strip '.*'
+
+    parts = base_version.split('.')
+    is_partial = len(parts) < 3
+
+    # 4. Process directional comparisons (<, <=, >, >=) with partials/wildcards
+    if comparison_op in ('<', '<=', '>', '>='):
+        if is_wildcard or is_partial:
+            if comparison_op == '<=':
+                try:
+                    parts[-1] = str(int(parts[-1]) + 1)
+                    return SpecifierSet(f"<{'.'.join(parts)}")
+                except ValueError:
+                    pass
+            elif comparison_op == '<':
+                return SpecifierSet(f'<{base_version}')
+            elif comparison_op == '>=':
+                return SpecifierSet(f'>={base_version}')
+            elif comparison_op == '>':
+                try:
+                    parts[-1] = str(int(parts[-1]) + 1)
+                    return SpecifierSet(f'>={".".join(parts)}')
+                except ValueError:
+                    pass
+        return SpecifierSet(f'{comparison_op}{base_version}')
+
+    if not comparison_op and is_wildcard:
+        # Bare wildcards like '0.4.*' translate to '==0.4.*'
+        return SpecifierSet(f'=={base_version}.*')
+
+    # Fallback for standard Python specifiers (if anything not covered)
     return SpecifierSet(clean_spec)
+
+
+def _parse_cargo_specifiers(spec_str: str) -> Collection[SpecifierSet]:
+    return tuple(map(_parse_cargo_specifier, spec_str.split(',')))
 
 
 def solve_dependency(version_specifier, available_versions):
@@ -84,12 +145,12 @@ def solve_dependency(version_specifier, available_versions):
     :returns: matched version string, or None if available ver don't match
     :rtype: dict
     """
-    spec = _parse_cargo_specifier(version_specifier)
+    specs = _parse_cargo_specifiers(version_specifier)
 
     # We sort them first to prioritize higher versions for the packages
     sorted_versions = sorted(
         available_versions,
-        key=lambda x: [int(part) for part in x.split('.')],
+        key=Version,
         reverse=True
     )
 
@@ -97,7 +158,7 @@ def solve_dependency(version_specifier, available_versions):
     for version in sorted_versions:
         v = Version(version)
         # print(v, spec)
-        if v in spec:
+        if all(v in spec for spec in specs):
             return str(v)
 
     return None

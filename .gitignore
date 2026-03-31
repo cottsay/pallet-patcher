@@ -1,4 +1,7 @@
 /dist/
+/doc/_build/
+/doc/api/
+/doc/doc/
 /*.egg-info/
 /.coverage
 /COLCON_IGNORE

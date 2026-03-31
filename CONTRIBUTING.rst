@@ -1,0 +1,48 @@
+==============================
+Contributing to pallet-patcher
+==============================
+
+First off, thank you for considering contribution to `pallet-patcher`.
+
+
+Reporting Bugs and Requesting Features
+======================================
+
+If you encounter a bug or have a feature request, please `open an issue <https://github.com/cottsay/pallet-patcher/issues>`_ on our GitHub repository. Before opening a new issue, please check to see if a similar one has already been reported.
+
+When reporting a bug, please include as much detail as possible, including:
+
+*   A clear and descriptive title.
+*   Steps to reproduce the bug.
+*   What you expected to happen.
+*   What actually happened.
+*   Your operating system and Python version.
+
+Submitting Pull Requests
+========================
+
+If you'd like to contribute code to `pallet-patcher`, we welcome your pull requests. Here's a quick guide:
+
+1.  Fork the repository and create your branch from `main`.
+2.  Make your changes. Try to keep your changes small and focused on a single feature or bug fix.
+3.  Ensure your code is well-documented and follows the project's coding style.
+4.  Add or update unit tests as appropriate.
+5.  Open a `pull request <https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork>`_ with a clear title and description of your changes.
+
+Running Tests and Linters
+=========================
+
+`pallet-patcher` uses ``pytest`` to run unit tests and linters. Before submitting a pull request, please ensure that all tests and linters pass.
+
+To run the full suite of tests and linters, simply run ``pytest`` from the root of the repository:
+
+.. code-block:: console
+
+    $ pytest
+
+This will execute the unit tests and also run several linters to check for:
+
+*   Code style (using `flake8`)
+*   Correct copyright and license headers
+
+If any of these checks fail, your pull request will not be able to be merged.

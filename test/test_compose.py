@@ -25,7 +25,7 @@ def test_dry():
         _PACKAGES_PATH / 'lower_layer',
     )
 
-    composition = compose(dependencies, search_paths)
+    composition, _ = compose(dependencies, search_paths)
     assert len(composition) == 5, f'{composition}'
 
     # We expect 2 arguments per element in the composition
@@ -50,7 +50,7 @@ def test_cargo_arguments(tmpdir):
     )
 
     pkg_e = layer_dst / 'pkg-e-0.0.0'
-    composition = load_and_compose(pkg_e / 'Cargo.toml', search_paths)
+    composition, _ = load_and_compose(pkg_e / 'Cargo.toml', search_paths)
     arguments = get_cargo_arguments(composition)
 
     subprocess.run(
@@ -71,7 +71,7 @@ def test_cargo_config(tmpdir):
     )
 
     pkg_e = layer_dst / 'pkg-e-0.0.0'
-    composition = load_and_compose(pkg_e / 'Cargo.toml', search_paths)
+    composition, _ = load_and_compose(pkg_e / 'Cargo.toml', search_paths)
     config = get_cargo_config(composition)
 
     config_file = pkg_e / '.cargo' / 'config.toml'
@@ -99,7 +99,7 @@ def test_different_versions_same_folder():
         _PACKAGES_PATH / 'lower_layer',
     )
 
-    composition = compose(dependencies, search_paths)
+    composition, _ = compose(dependencies, search_paths)
 
     pkg_a_entries = {
         k: v for k, v in composition.items() if v[2] == 'pkg-a'
@@ -123,7 +123,7 @@ def test_different_versions_across_folders():
         _PACKAGES_PATH / 'lower_layer',
     )
 
-    composition = compose(dependencies, search_paths)
+    composition, _ = compose(dependencies, search_paths)
 
     pkg_a_entries = {
         k: v for k, v in composition.items() if v[2] == 'pkg-a'
@@ -144,7 +144,7 @@ def test_same_version_spec_deduplicates():
         _PACKAGES_PATH / 'lower_layer',
     )
 
-    composition = compose(dependencies, search_paths)
+    composition, _ = compose(dependencies, search_paths)
 
     pkg_a_entries = [
         k for k in composition if composition[k][2] == 'pkg-a'
@@ -166,7 +166,7 @@ def test_pkgname_with_prerelease_works():
         _PACKAGES_PATH / 'lower_layer',
     )
 
-    composition = compose(dependencies, search_paths)
+    composition, _ = compose(dependencies, search_paths)
 
     wasi_entries = {
         k: v for k, v in composition.items() if v[2] == 'wasi'

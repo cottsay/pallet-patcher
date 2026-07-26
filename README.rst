@@ -27,7 +27,7 @@ Usage
 
 .. code-block:: text
 
-    usage: pallet-patcher [-h] [--output-format {args,toml}]
+    usage: pallet-patcher [-h] [--output-format {args,toml,in-place}]
                           manifest_path search_path [search_path ...]
 
     positional arguments:
@@ -36,9 +36,10 @@ Usage
 
     options:
       -h, --help            show this help message and exit
-      --output-format {args,toml}
+      --output-format {args,toml,in-place}
                             Choose the output format for Cargo configuration. 'args' (default)
-                            for CLI arguments, or 'toml' for configuration file contents.
+                            for CLI arguments, 'toml' for configuration file contents, or
+                            'in-place' to rewrite the manifest's dependencies directly.
 
 Example
 -------
@@ -69,6 +70,36 @@ Output:
     [patch.'crates-io'.'pkg::0.1.0']
     package = 'pkg'
     path = '/usr/share/cargo/registry/pkg'
+
+Rewrite the manifest's dependencies directly to point at the discovered local
+crates:
+
+.. code-block:: bash
+
+    pallet-patcher --output-format in-place Cargo.toml /usr/share/cargo/registry
+
+Before:
+
+.. code-block:: toml
+
+    [dependencies]
+    pkg = { version = "0.1", features = ["derive"] }
+
+After (a ``Cargo.toml.orig`` backup is written before the manifest is changed):
+
+.. code-block:: toml
+
+    [dependencies]
+    pkg = { path = '/usr/share/cargo/registry/pkg', features = ["derive"] }
+
+This rewrites exactly the manifest's own direct dependencies that the ``args``
+and ``toml`` formats would resolve, using the same resolution logic. Both
+inline entries and dedicated ``[dependencies.<name>]`` table sections are
+handled, keys other than the source specifier (e.g: ``version``/``git``/
+``registry``) are preserved, and a dependency that already points at the
+resolved crate is left as-is. If a ``Cargo.toml.orig`` backup already
+exists it is not overwritten, keeping the pristine original safe across
+repeated runs.
 
 .. |build| image:: https://img.shields.io/github/actions/workflow/status/ros-infrastructure/pallet-patcher/ci.yaml?branch=main&event=push
    :target: https://github.com/ros-infrastructure/pallet-patcher/actions/workflows/ci.yaml?query=branch%3Amain+event%3Apush

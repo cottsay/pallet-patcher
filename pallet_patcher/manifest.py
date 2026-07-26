@@ -13,6 +13,14 @@ except ImportError:
         from toml import loads as toml_loads
 
 
+# The dependency categories, in the order returned by ``get_dependencies``.
+DEPENDENCY_CATEGORIES = (
+    'dependencies',
+    'build-dependencies',
+    'dev-dependencies',
+)
+
+
 def load_manifest(manifest_path):
     """
     Load data from a Cargo.toml file.
@@ -25,6 +33,32 @@ def load_manifest(manifest_path):
     """
     with manifest_path.open('rb') as f:
         return toml_loads(f.read().decode())
+
+
+def dump_manifest(manifest_data):
+    """
+    Serialize manifest data back to TOML text.
+
+    The writer is imported lazily because there is no TOML serializer in the
+    standard library, so only workflows which actually rewrite a manifest
+    (e.g. the in-place output) require one to be installed.
+
+    :param manifest_data: The manifest data to serialize
+    :type manifest_data: dict
+
+    :returns: The TOML representation of the manifest data
+    :rtype: str
+    """
+    try:
+        from tomli_w import dumps as toml_dumps
+    except ImportError:
+        try:
+            from toml import dumps as toml_dumps
+        except ImportError:
+            raise ImportError(
+                'writing a manifest requires the "tomli-w" (Python 3.7+) or '
+                '"toml" package to be installed')
+    return toml_dumps(manifest_data)
 
 
 def _extract_dependencies(manifest_section, package_name):

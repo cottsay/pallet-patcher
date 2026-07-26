@@ -4,6 +4,8 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
+from pallet_patcher.inplace import apply_in_place
+from pallet_patcher.manifest import DEPENDENCY_CATEGORIES
 from pallet_patcher.manifest import get_dependencies
 from pallet_patcher.manifest import load_manifest
 from pallet_patcher.search import compose
@@ -20,14 +22,19 @@ def load_and_compose(manifest_path, search_paths):
     :param search_paths: List of local registry sources to search for packages
     :type search_paths: list
 
-    :returns: Collection of packages which may satisfy the requirements to
-      build the package.
-    :rtype: dict
+    :returns: Tuple with: 1. Collection of packages which may satisfy the
+      requirements to build the package, and, 2. direct-dependency-map (to
+      output in-place).
+    :rtype: tuple
     """
     manifest = load_manifest(manifest_path)
     location = manifest_path.parent.resolve()
-    plain, build, dev = get_dependencies(manifest, location)
-    dependencies = [*plain.items(), *build.items(), *dev.items()]
+    extracted = get_dependencies(manifest, location)
+    dependencies = [
+        (category, key, specifications)
+        for category, entries in zip(DEPENDENCY_CATEGORIES, extracted)
+        for key, specifications in entries.items()
+    ]
 
     return compose(dependencies, search_paths, seeds=[location])
 
@@ -43,11 +50,17 @@ def main(argv=None):
     parser.add_argument('manifest_path', type=Path)
     parser.add_argument('search_path', type=Path, nargs='+')
     parser.add_argument(
-        '--output-format', choices=('args', 'toml'), default='args')
+        '--output-format', choices=('args', 'toml', 'in-place'),
+        default='args')
     args = parser.parse_args(argv)
 
     search_paths = [path.resolve() for path in args.search_path]
-    composition = load_and_compose(args.manifest_path, search_paths)
+
+    composition, direct = load_and_compose(args.manifest_path, search_paths)
+
+    if args.output_format == 'in-place':
+        apply_in_place(args.manifest_path, direct)
+        return
 
     if args.output_format == 'toml':
         print(get_cargo_config(composition))

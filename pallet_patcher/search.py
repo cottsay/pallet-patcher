@@ -133,12 +133,27 @@ def find_candidate(name, version_spec, registered):
     return None
 
 
+def _normalize_dependency(item):
+    """Normalize a dependency entry to a (category, key, spec) triple.
+
+    Direct dependencies may carry the manifest category they were declared in;
+    bare ``(key, specifications)`` pairs (e.g. transitive dependencies) get a
+    ``None`` category.
+    """
+    if len(item) == 3:
+        return item
+    key, specifications = item
+    return None, key, specifications
+
+
 def compose(dependencies, search_paths, *, seeds=None):
     """
     Compose a collection of crates which may satisfy given dependencies.
 
-    :param dependencies: List of dependency tuples
-      (import name, specifications)
+    :param dependencies: List of dependency tuples, either
+      ``(import name, specifications)`` or
+      ``(category, import name, specifications)``. A category ties the entry to
+      a manifest section so it can be reported in the direct-dependency map.
     :type dependencies: tuple
     :param search_paths: List of local registry sources to search for packages
     :type search_paths: list
@@ -146,49 +161,59 @@ def compose(dependencies, search_paths, *, seeds=None):
       composition.
     :type seeds: list
 
-    :returns: Collection of packages which may satisfy the required
-      dependencies.
-    :rtype: dict
+    :returns: Tuple of the transitive-closure composition (keyed by
+      ``name::version``) and the direct-dependency map (keyed by
+      ``(category, import name)`` for the entries which carried a category).
+    :rtype: tuple
     """
     registered = build_index(seeds, search_paths)
 
     composition = {}
+    direct = {}
     solved_specifiers = {}
 
-    queue = list(dependencies)
+    queue = [_normalize_dependency(item) for item in dependencies]
     while queue:
-        name, specifications = queue.pop(0)
-        name, version_spec = derive_name_and_spec(name, specifications)
+        category, key, specifications = queue.pop(0)
+        name, version_spec = derive_name_and_spec(key, specifications)
 
-        # If we already parsed a version_spec, do not repeat that
+        # If we already parsed a version_spec, do not repeat the lookup.
         # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, etc
-        if name+str(version_spec) in solved_specifiers:
-            continue
+        if name+str(version_spec) not in solved_specifiers:
+            found = find_candidate(name, version_spec, registered)
+            # Do not search again for specifiers we already looked up
+            solved_specifiers[name+str(version_spec)] = found
+            if found is not None:
+                solved_version, (location, manifest) = found
+                # Add the dependencies of the pkg to the list of packages that
+                # we need to find afterwards
+                plain_deps, build_deps, _ = get_dependencies(
+                    manifest, location)
+                queue.extend(
+                    (None, dep, spec) for dep, spec in plain_deps.items())
+                queue.extend(
+                    (None, dep, spec) for dep, spec in build_deps.items())
 
-        # Do not search again for versions specifiers that we already looked up
-        solved_specifiers[name+str(version_spec)] = True
-
-        found = find_candidate(name, version_spec, registered)
-        if found is None:
+                # We also add the raw pkgname to the composition, because
+                # patches don't support pkgname+version as part of the name
+                composition[name+'::'+solved_version] = (
+                    _get_reference(specifications), location, name)
+        else:
             # We rely on cargo to pull from its default registry (crates.io)
             # if we don't find a dependency locally.
             # TO-DO(blast545): This might throw an error if we use
             # pallet-patcher for auditing reasons.
-            continue
+            found = solved_specifiers[name+str(version_spec)]
 
-        solved_version, (location, manifest) = found
-        reference = _get_reference(specifications)
-        # Add the dependencies of the pkg to the list of packages that we
-        # need to find afterwards
-        plain_deps, build_deps, _ = get_dependencies(manifest, location)
-        queue.extend(plain_deps.items())
-        queue.extend(build_deps.items())
+        # Record each direct-dependency occurrence so callers can map a
+        # resolved crate back to the manifest entry (and category) it was
+        # declared under. Transitive dependencies carry no category.
+        if category is not None and found is not None:
+            _solved_version, (location, _manifest) = found
+            direct[(category, key)] = (
+                _get_reference(specifications), location, name, specifications)
 
-        # We also add the raw pkgname to the composition, because patches
-        # don't support adding pkgname+version as part of the patch name
-        composition[name+'::'+solved_version] = (reference, location, name)
-
-    return composition
+    return composition, direct
 
 
 def get_cargo_arguments(composition, default_registry=None):

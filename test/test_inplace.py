@@ -172,7 +172,9 @@ def test_inplace_patches_whole_table_dependencies(tmp_path):
 def test_inplace_leaves_matching_path_dependency(tmp_path):
     # A path already pointing at the resolved crate is left untouched, since
     # Cargo cannot patch a dependency to the location it already references.
-    target = _PACKAGES_PATH / 'lower_layer' / 'pkg-a-1.0.0'
+    # Use a forward-slash path: backslashes are escape characters in TOML
+    # basic strings, so a raw Windows path (e.g. ``D:\a\...``) is invalid TOML.
+    target = (_PACKAGES_PATH / 'lower_layer' / 'pkg-a-1.0.0').as_posix()
     body = '\n'.join((
         '[package]',
         'name = "consumer"',

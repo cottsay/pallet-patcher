@@ -149,7 +149,9 @@ def compose(dependencies, search_paths, *, seeds=None):
     return composition
 
 
-def get_cargo_arguments(composition, default_registry=None):
+def get_cargo_arguments(
+    composition, default_registry=None, relative_paths=False,
+):
     """
     Get arguments to pass to 'cargo' which patch package references.
 
@@ -157,6 +159,9 @@ def get_cargo_arguments(composition, default_registry=None):
     :type composition: dict
     :param default_registry: The default package registry if none was specified
     :type default_registry: str, optional
+    :param relative_paths: Whether to generate relative paths from the working
+      directory
+    :type relative_paths: bool, optional
 
     :returns: List of command line arguments
     :rtype: list
@@ -177,13 +182,16 @@ def get_cargo_arguments(composition, default_registry=None):
             # at least one of our candidates.
             continue
 
+        path_str = (
+            os.path.relpath(candidate) if relative_paths else str(candidate)
+        )
         section = f"patch.'{reference}'.'{versioned_name}'"
         arguments.add(f"--config={section}.package='{pkgname}'")
-        arguments.add(f"--config={section}.path='{candidate}'")
+        arguments.add(f"--config={section}.path='{path_str}'")
     return sorted(arguments)
 
 
-def get_cargo_config(composition, default_registry=None):
+def get_cargo_config(composition, default_registry=None, relative_paths=False):
     """
     Get Cargo configuration to patch package references.
 
@@ -191,6 +199,9 @@ def get_cargo_config(composition, default_registry=None):
     :type composition: dict
     :param default_registry: The default package registry if none was specified
     :type default_registry: str, optional
+    :param relative_paths: Whether to generate relative paths from the working
+      directory
+    :type relative_paths: bool, optional
 
     :returns: Raw TOML configuration
     :rtype: str
@@ -210,9 +221,12 @@ def get_cargo_config(composition, default_registry=None):
             # at least one of our candidates.
             continue
 
+        path_str = (
+            os.path.relpath(candidate) if relative_paths else str(candidate)
+        )
         sections.add('\n'.join((
             f"[patch.'{reference}'.'{versioned_name}']",
             f"package = '{pkgname}'",
-            f"path = '{candidate}'",
+            f"path = '{path_str}'",
         )))
     return '\n\n'.join(sorted(sections))

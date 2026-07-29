@@ -95,7 +95,8 @@ def derive_name_and_spec(name, specifications):
 
     :param name: The import name the dependency is listed under
     :type name: str
-    :param specifications: The dependency's specification (string or table)
+    :param specifications: The dependency's specification
+    :type specifications: str or dict
 
     :returns: Tuple of (crate name, version specifier)
     :rtype: tuple

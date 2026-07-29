@@ -66,6 +66,75 @@ def _get_reference(specification):
     return specification.get('registry')
 
 
+def build_index(seeds, search_paths):
+    """
+    Build the priority-ordered crate index used to resolve dependencies.
+
+    :param seeds: List of package directories which are explicit candidates.
+    :type seeds: list
+    :param search_paths: List of local registry sources to search for packages
+    :type search_paths: list
+
+    :returns: List of (versions, metadata) pairs in priority order
+    :rtype: list
+    """
+    registered = []
+    if seeds:
+        manifest_paths = [seed / 'Cargo.toml' for seed in seeds]
+        registered.append(_get_crates(manifest_paths))
+
+    for user_path in search_paths:
+        registered.append(_get_available_crates(user_path))
+
+    return registered
+
+
+def derive_name_and_spec(name, specifications):
+    """
+    Resolve the crate name and version specifier for a dependency entry.
+
+    :param name: The import name the dependency is listed under
+    :type name: str
+    :param specifications: The dependency's specification
+    :type specifications: str or dict
+
+    :returns: Tuple of (crate name, version specifier)
+    :rtype: tuple
+    """
+    if isinstance(specifications, dict):
+        # This case covers packages like: rustc-std-workspace-core
+        # where its listed name differs from the installation name
+        # core {'version': '1.0.0',
+        #    'optional': True, 'package': 'rustc-std-workspace-core'}
+        return specifications.get('package', name), \
+            specifications.get('version', '*')
+    return name, specifications
+
+
+def find_candidate(name, version_spec, registered):
+    """
+    Find the highest-priority local crate satisfying a dependency.
+
+    :param name: The crate name to look up
+    :type name: str
+    :param version_spec: The version specifier to satisfy
+    :type version_spec: str
+    :param registered: Priority-ordered crate index from :func:`build_index`
+    :type registered: list
+
+    :returns: Tuple of (solved version, (directory, manifest)) or None
+    :rtype: tuple
+    """
+    # Priority mechanism, check the dependency paths in the order provided
+    for crates, metadata in registered:
+        available_versions = crates.get(name)
+        if available_versions:
+            solved_version = solve_dependency(version_spec, available_versions)
+            if solved_version:
+                return solved_version, metadata[f'{name}::{solved_version}']
+    return None
+
+
 def compose(dependencies, search_paths, *, seeds=None):
     """
     Compose a collection of crates which may satisfy given dependencies.
@@ -83,15 +152,7 @@ def compose(dependencies, search_paths, *, seeds=None):
       dependencies.
     :rtype: dict
     """
-    dependency_paths_registered = []
-    if seeds:
-        manifest_paths = [seed / 'Cargo.toml' for seed in seeds]
-        crates_and_metadata = _get_crates(manifest_paths)
-        dependency_paths_registered.append(crates_and_metadata)
-
-    for user_path in search_paths:
-        crates_and_metadata = _get_available_crates(user_path)
-        dependency_paths_registered.append(crates_and_metadata)
+    registered = build_index(seeds, search_paths)
 
     composition = {}
     solved_specifiers = {}
@@ -99,45 +160,28 @@ def compose(dependencies, search_paths, *, seeds=None):
     queue = list(dependencies)
     while queue:
         name, specifications = queue.pop(0)
-        if isinstance(specifications, dict):
-            # This case covers packages like: rustc-std-workspace-core
-            # where it's listed name differs from the installation name
-            # print(name, specification)
-            # core {'version': '1.0.0',
-            #    'optional': True, 'package': 'rustc-std-workspace-core'}
-            name = specifications.get('package', name)
-            version_spec = specifications.get('version', '*')
-        else:
-            version_spec = specifications
+        name, version_spec = derive_name_and_spec(name, specifications)
 
         # If we already parsed a version_spec, do not repeat that
         # TO-DO: this won't filter libc==0.2.62, libc==0.2.95, etc
         if name+str(version_spec) in solved_specifiers:
             continue
 
-        candidate = None
-        # Priority mechanism, check the dependency paths in the order provided
-        for crates, metadada in dependency_paths_registered:
-            if crates[name]:
-                solved_version = solve_dependency(version_spec, crates[name])
-                if solved_version:
-                    candidate = metadada[f'{name}::{solved_version}']
-                    break
-
         # Do not search again for versions specifiers that we already looked up
         solved_specifiers[name+str(version_spec)] = True
 
-        if candidate is None:
+        found = find_candidate(name, version_spec, registered)
+        if found is None:
             # We rely on cargo to pull from its default registry (crates.io)
             # if we don't find a dependency locally.
             # TO-DO(blast545): This might throw an error if we use
             # pallet-patcher for auditing reasons.
             continue
 
+        solved_version, (location, manifest) = found
         reference = _get_reference(specifications)
         # Add the dependencies of the pkg to the list of packages that we
         # need to find afterwards
-        location, manifest = candidate
         plain_deps, build_deps, _ = get_dependencies(manifest, location)
         queue.extend(plain_deps.items())
         queue.extend(build_deps.items())

@@ -126,8 +126,9 @@ def find_candidate(name, version_spec, registered):
     """
     # Priority mechanism, check the dependency paths in the order provided
     for crates, metadata in registered:
-        if crates[name]:
-            solved_version = solve_dependency(version_spec, crates[name])
+        available_versions = crates.get(name)
+        if available_versions:
+            solved_version = solve_dependency(version_spec, available_versions)
             if solved_version:
                 return solved_version, metadata[f'{name}::{solved_version}']
     return None

@@ -44,13 +44,21 @@ def main(argv=None):
     parser.add_argument('search_path', type=Path, nargs='+')
     parser.add_argument(
         '--output-format', choices=('args', 'toml'), default='args')
+    parser.add_argument(
+        '--relative-paths', action='store_true',
+        help='Generate relative paths from the working directory instead '
+             'of absolute paths')
     args = parser.parse_args(argv)
 
     search_paths = [path.resolve() for path in args.search_path]
     composition = load_and_compose(args.manifest_path, search_paths)
 
     if args.output_format == 'toml':
-        print(get_cargo_config(composition))
+        print(get_cargo_config(
+            composition, relative_paths=args.relative_paths))
     else:
-        for argument in get_cargo_arguments(composition):
+        for argument in get_cargo_arguments(
+            composition,
+            relative_paths=args.relative_paths,
+        ):
             print(argument)
